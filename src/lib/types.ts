@@ -153,6 +153,9 @@ export interface Idea {
   possible_start: string | null;
   target_date: string | null;
   converted_project_id: string | null;
+  photo_data: string | null;      // data:image/jpeg;base64,… (instant-capture photo)
+  voice_data: string | null;      // data:audio/…;base64,… (instant-capture voice note)
+  voice_duration_secs: number | null;
   archived: boolean;
   deleted: boolean;
   sort_order: number;

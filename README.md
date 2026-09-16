@@ -29,7 +29,7 @@ The same account works on Windows and Android: create a task on one, complete it
 | **Recurring tasks** | Daily / weekdays / weekly (pick days) / monthly (day-of-month) / yearly / custom. Completions are tracked per-occurrence so finishing today keeps future dates intact |
 | **Projects** | Statuses (Idea→Planning→Active→On Hold→Completed→Archived), priority, dates, color, milestones with due dates, linked tasks, visual progress |
 | **Goals** | Long-term / yearly / monthly / weekly horizons, deadline, milestones, related tasks, progress |
-| **Ideas & Future** | Someday/maybe parking lot with its own statuses and effort estimates. **One button converts an idea into an active project.** |
+| **Ideas & Future** | Someday/maybe parking lot with its own statuses and effort estimates. **One button converts an idea into an active project.** **Instant capture:** snap a photo of what sparked the idea and record a voice note right in the app (camera + mic, auto-compressed, synced everywhere) |
 | **Remember** | Permanent knowledge: principles, rules, checklists. Pin, favorite, categories, tags, search |
 | **Notes** | Folders, tags, pin, favorite, archive, search, links to task/project/goal |
 | **Weekly planner** | 7-day grid of time blocks (College 8–2, Gym 4–5:30…), colors, recurrence, optional task link — deliberately a different concept from tasks |

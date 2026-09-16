@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { Icon, Modal, EmptyState, useConfirm } from '../../ui/components';
 import { dbState, createIdea, updateIdea, deleteIdea, convertIdeaToProject } from '../../lib/db';
+import { IdeaCaptureModal } from '../IdeaCapture';
 import { IDEA_STATUS_LABEL, PRIORITY_LABEL, EFFORT_LABEL } from '../../lib/types';
 import type { Idea, IdeaStatus, Priority } from '../../lib/types';
 import { fmtDate } from '../../lib/dates';
@@ -17,6 +18,7 @@ export function IdeasPage() {
   const { toast } = useApp();
   const { confirm, confirmEl } = useConfirm();
   const [editing, setEditing] = useState<Idea | 'new' | null>(null);
+  const [capturing, setCapturing] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
   const [search, setSearch] = useState('');
 
@@ -32,7 +34,12 @@ export function IdeasPage() {
           <h1 className="text-2xl font-extrabold tracking-tight">Ideas & Future</h1>
           <p className="text-sm muted">Parking lot for someday/maybe — out of today's way, never forgotten.</p>
         </div>
-        <button className="btn-primary" onClick={() => setEditing('new')}><Icon name="plus" className="h-4 w-4" /> New idea</button>
+        <div className="flex gap-2">
+          <button className="btn-primary" onClick={() => setCapturing(true)} aria-label="Instant idea capture with photo or voice">
+            <Icon name="bulb" className="h-4 w-4" /> Capture 💡
+          </button>
+          <button className="btn-secondary" onClick={() => setEditing('new')}><Icon name="plus" className="h-4 w-4" /> New idea</button>
+        </div>
       </div>
 
       <div className="mb-4 flex flex-wrap gap-2">
@@ -67,6 +74,15 @@ export function IdeasPage() {
                   <Icon name="trash" className="h-4 w-4" />
                 </button>
               </div>
+              {i.photo_data && (
+                <img src={i.photo_data} alt={`Photo for ${i.title}`} className="mt-2 w-full max-h-44 object-cover rounded-lg border border-slate-900/10 dark:border-white/10" loading="lazy" />
+              )}
+              {i.voice_data && (
+                <div className="mt-2 flex items-center gap-2">
+                  <audio controls preload="none" src={i.voice_data} className="w-full h-9" />
+                  {i.voice_duration_secs ? <span className="chip shrink-0">🎙 {Math.floor(i.voice_duration_secs / 60)}:{String(i.voice_duration_secs % 60).padStart(2, '0')}</span> : null}
+                </div>
+              )}
               {i.description && <p className="mt-2 line-clamp-2 text-sm muted">{i.description}</p>}
               {i.why && <p className="mt-1 text-xs muted"><b>Why:</b> {i.why}</p>}
               <div className="mt-3 flex items-center gap-2">
@@ -86,6 +102,7 @@ export function IdeasPage() {
         </div>
       )}
 
+      <IdeaCaptureModal open={capturing} onClose={() => setCapturing(false)} onCaptured={() => setStatusFilter('')} />
       {editing && <IdeaEditor idea={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
       {confirmEl}
     </div>
