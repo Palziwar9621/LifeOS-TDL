@@ -55,7 +55,6 @@ export function NotesPage() {
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight">Notes</h1>
           <p className="text-sm muted">Plain text, checklists, anything — synced everywhere.</p>
         </div>
         <div className="flex items-center gap-2">

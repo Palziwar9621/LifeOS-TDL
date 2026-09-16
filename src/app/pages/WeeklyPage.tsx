@@ -73,7 +73,7 @@ function BlockEditor({ block, defaultDow, onClose }: { block: ScheduleBlock | nu
   const s = dbState();
   const { toast } = { toast: (m: string, k?: any) => console.log(m) };
   const [title, setTitle] = useState(block?.title ?? '');
-  const [weekday, setWeekday] = useState<number>(block?.weekday ?? defaultDow ?? 1);
+  const [weekdays, setWeekdays] = useState<number[]>([block?.weekday ?? defaultDow ?? 1]);
   const [start, setStart] = useState((block?.start_time ?? '09:00:00').slice(0, 5));
   const [end, setEnd] = useState((block?.end_time ?? '10:00:00').slice(0, 5));
   const [color, setColor] = useState(block?.color ?? '#6366f1');
@@ -82,18 +82,32 @@ function BlockEditor({ block, defaultDow, onClose }: { block: ScheduleBlock | nu
   const [recurrence, setRecurrence] = useState(block?.recurrence ?? 'weekly');
 
   const tasks = s.tasks.filter((t) => !t.deleted && t.status !== 'completed').slice(0, 100);
+  const toggleDay = (d: number) =>
+    setWeekdays((prev) => (prev.includes(d) ? (prev.length > 1 ? prev.filter((x) => x !== d) : prev) : [...prev, d].sort()));
 
   const save = async () => {
     if (!title.trim()) return;
-    const payload = {
-      title: title.trim(), weekday, start_time: start + ':00', end_time: end + ':00',
-      color, notes: notes || null,
-      linked_task_id: linkedTaskId || null,
-      recurrence,
-    };
-    if (block) await updateScheduleBlock(block.id, payload);
-    else await createScheduleBlock(payload);
-    toast(block ? 'Block updated' : 'Block added');
+    // Multi-day: create one block per picked day (edit keeps its own day).
+    if (block) {
+      await updateScheduleBlock(block.id, {
+        title: title.trim(), weekday: weekdays[0], start_time: start + ':00', end_time: end + ':00',
+        color, notes: notes || null,
+        linked_task_id: linkedTaskId || null,
+        recurrence,
+      });
+      toast('Block updated');
+      onClose();
+      return;
+    }
+    for (const d of weekdays) {
+      await createScheduleBlock({
+        title: title.trim(), weekday: d, start_time: start + ':00', end_time: end + ':00',
+        color, notes: notes || null,
+        linked_task_id: linkedTaskId || null,
+        recurrence,
+      } as any);
+    }
+    toast(weekdays.length > 1 ? `Block added to ${weekdays.length} days` : 'Block added');
     onClose();
   };
 
@@ -111,13 +125,22 @@ function BlockEditor({ block, defaultDow, onClose }: { block: ScheduleBlock | nu
           <label className="label">Title</label>
           <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Gym / College / Deep work" autoFocus />
         </div>
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <label className="label">Day</label>
-            <select className="input" value={weekday} onChange={(e) => setWeekday(parseInt(e.target.value, 10))}>
-              {[1, 2, 3, 4, 5, 6, 0].map((d) => <option key={d} value={d}>{DAY_NAMES[d]}</option>)}
-            </select>
+        <div>
+          <label className="label">Days <span className="muted font-normal">(tap to pick several — e.g. Mon + Tue + Wed)</span></label>
+          <div className="grid grid-cols-7 gap-1">
+            {DAY_NAMES.map((n, i) => (
+              <button key={n} type="button" onClick={() => toggleDay(i)}
+                className={`rounded-lg py-2 text-xs font-bold transition ${weekdays.includes(i) ? 'bg-brand-600 text-white' : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
+                aria-pressed={weekdays.includes(i)}>
+                {n.slice(0, 3)}
+              </button>
+            ))}
           </div>
+          {!block && weekdays.length > 1 && (
+            <p className="mt-1.5 text-xs muted">Creates {weekdays.length} blocks — one per day, same time.</p>
+          )}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="label">Start</label>
             <input type="time" className="input" value={start} onChange={(e) => setStart(e.target.value)} />

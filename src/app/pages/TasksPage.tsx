@@ -8,9 +8,10 @@ import { PRIORITY_ORDER, PRIORITY_LABEL } from '../../lib/types';
 import type { Task, Priority, TaskStatus } from '../../lib/types';
 import { TaskRow } from '../TaskRow';
 import { TaskEditor } from '../TaskEditor';
+import { RemindersPanel } from './RemindersPage';
 import { useApp } from '../store';
 
-type ViewKey = 'today' | 'tomorrow' | 'upcoming' | 'inbox' | 'overdue' | 'completed' | 'all';
+type ViewKey = 'today' | 'tomorrow' | 'upcoming' | 'inbox' | 'overdue' | 'completed' | 'all' | 'reminders';
 type SortKey = 'manual' | 'due' | 'priority' | 'created' | 'title';
 
 interface Row {
@@ -183,6 +184,7 @@ export function TasksPage() {
     { key: 'overdue', label: 'Overdue' },
     { key: 'completed', label: 'Completed' },
     { key: 'all', label: 'All' },
+    { key: 'reminders', label: '🔔 Reminders' },
   ];
 
   return (
@@ -202,6 +204,10 @@ export function TasksPage() {
 
       <Tabs tabs={VIEWS} active={view} onChange={(k) => setView(k as ViewKey)} />
 
+      {view === 'reminders' ? (
+        <div className="mt-3"><RemindersPanel /></div>
+      ) : (
+      <>
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
         <select className="input !w-auto !py-1.5" value={fPriority} onChange={(e) => setFPriority(e.target.value)} aria-label="Filter by priority">
           <option value="">All priorities</option>
@@ -270,6 +276,8 @@ export function TasksPage() {
           ))
         )}
       </div>
+      </>
+      )}
 
       <TaskEditor task={editing} onClose={() => setEditing(null)} />
       {confirmEl}

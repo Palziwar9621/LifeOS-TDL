@@ -8,8 +8,10 @@ import { startReminderScheduler } from '../lib/notifications';
 
 export type Page =
   | 'home' | 'today' | 'tasks' | 'calendar' | 'weekly' | 'projects' | 'goals'
-  | 'notes' | 'ideas' | 'remember' | 'stats' | 'focus' | 'review' | 'search' | 'settings' | 'reminders'
-  | 'productivity';
+  | 'library' | 'stats' | 'focus' | 'search' | 'settings' | 'reminders'
+  | 'productivity' | 'review'
+  // legacy keys kept so old deep links / bookmarks don't break
+  | 'notes' | 'ideas' | 'remember';
 
 export type ToastKind = 'info' | 'success' | 'error';
 

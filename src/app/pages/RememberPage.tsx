@@ -56,7 +56,6 @@ export function RememberPage() {
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight">Things to Remember</h1>
           <p className="text-sm muted">Principles, rules, checklists and info you never want to lose.</p>
         </div>
         <button className="btn-primary" onClick={() => setEditing('new')}><Icon name="plus" className="h-4 w-4" /> Add</button>

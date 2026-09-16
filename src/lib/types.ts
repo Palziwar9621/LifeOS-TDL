@@ -5,7 +5,7 @@ export type ProjectStatus = 'idea' | 'planning' | 'active' | 'on_hold' | 'comple
 export type IdeaStatus = 'idea' | 'someday' | 'planned' | 'ready_to_start' | 'active' | 'completed' | 'abandoned';
 export type GoalHorizon = 'long_term' | 'yearly' | 'monthly' | 'weekly';
 export type Recurrence = 'daily' | 'weekdays' | 'weekly' | 'monthly' | 'yearly' | 'custom';
-export type ReminderRecurrence = 'daily' | 'weekdays' | 'weekly' | 'monthly' | 'yearly';
+export type ReminderRecurrence = 'daily' | 'weekdays' | 'weekly' | 'monthly' | 'yearly' | 'custom';
 export type ScheduleRecurrence = 'weekly' | 'even_weeks' | 'odd_weeks' | 'daily';
 
 export interface Task {
@@ -214,6 +214,8 @@ export interface Reminder {
   done: boolean;
   snoozed_until: string | null;
   recurrence: ReminderRecurrence | null;
+  /** For weekly/custom recurrence: specific weekdays (0=Sun..6=Sat). */
+  recurrence_days: number[] | null;
   alarm_sound: string | null;     // AlarmSoundId; null = app default
   task_id: string | null;
   project_id: string | null;
@@ -249,8 +251,10 @@ export interface RoutineTask {
   id: string;
   user_id: string;
   title: string;
-  /** 0=Sunday..6=Saturday; null when this is a custom extra-date task. */
+  /** Legacy single day (0=Sun..6=Sat); null when days[] or extra_date is used. */
   weekday: number | null;
+  /** Multi-day repeat: specific weekdays (0=Sun..6=Sat). Non-empty = repeats on these days. */
+  days: number[] | null;
   /** Extra one-off date (custom day task) — repeats every week on that date? No: one specific date. */
   extra_date: string | null;
   time_of_day: string | null;   // HH:mm:ss

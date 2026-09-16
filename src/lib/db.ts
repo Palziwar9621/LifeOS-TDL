@@ -1060,6 +1060,7 @@ export async function createReminder(input: Partial<Reminder>): Promise<Reminder
     done: false,
     snoozed_until: null,
     recurrence: input.recurrence ?? null,
+    recurrence_days: input.recurrence_days ?? null,
     alarm_sound: input.alarm_sound ?? null,
     task_id: input.task_id ?? null,
     project_id: input.project_id ?? null,
@@ -1083,6 +1084,62 @@ export async function deleteReminder(id: string): Promise<void> {
 export async function snoozeReminder(id: string, minutes: number): Promise<void> {
   const until = new Date(Date.now() + minutes * 60000).toISOString();
   await updateRow('reminders', id, { snoozed_until: until, fired_at: null } as any);
+}
+
+/** Complete a reminder. Recurring ones roll forward to their next occurrence instead of dying. */
+export async function completeReminder(id: string): Promise<void> {
+  const r = state.reminders.find((x) => x.id === id);
+  if (!r || !r.recurrence) {
+    await updateReminder(id, { done: true } as any);
+    return;
+  }
+  const next = nextReminderDue(r, new Date(r.snoozed_until ?? r.due_at));
+  if (next) {
+    await updateReminder(id, { due_at: next.toISOString(), done: false, snoozed_until: null, fired_at: null } as any);
+  } else {
+    await updateReminder(id, { done: true } as any);
+  }
+}
+
+/** Next due Date for a recurring reminder, strictly after `after`. */
+function nextReminderDue(r: Reminder, after: Date): Date | null {
+  const timeOfDay = { h: after.getHours(), m: after.getMinutes(), s: after.getSeconds() };
+  const at = (d: Date) => { d.setHours(timeOfDay.h, timeOfDay.m, timeOfDay.s, 0); return d; };
+  const start = new Date(after.getTime() + 60000); // strictly after
+  const isDay = (d: Date) =>
+    r.recurrence_days && r.recurrence_days.length
+      ? r.recurrence_days.includes(d.getDay())
+      : true;
+  for (let i = 0; i < 370; i++) {
+    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    switch (r.recurrence) {
+      case 'daily':
+        if (d > start || at(new Date(d)) > start) return at(new Date(d.getTime() === new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime() ? d.getTime() : d.getTime()));
+        return at(d);
+      case 'weekdays':
+        if (d.getDay() >= 1 && d.getDay() <= 5 && at(new Date(d)) > start) return at(d);
+        break;
+      case 'weekly':
+      case 'custom':
+        if (isDay(d) && at(new Date(d)) > start) return at(d);
+        break;
+      case 'monthly': {
+        const probe = new Date(d.getFullYear(), d.getMonth(), Math.min(d.getDate(), 1));
+        void probe;
+        break;
+      }
+      case 'yearly': {
+        // same month/day next year
+        const cand = new Date(start.getFullYear() + 1, start.getMonth(), start.getDate());
+        return at(cand);
+      }
+    }
+  }
+  // monthly fallback: add one month, same time
+  if (r.recurrence === 'monthly') {
+    return at(new Date(start.getFullYear(), start.getMonth() + 1, start.getDate()));
+  }
+  return null;
 }
 
 // ------------------------------------------------------------------
@@ -1249,6 +1306,7 @@ export async function createRoutineTask(input: Partial<RoutineTask>): Promise<Ro
     id: crypto.randomUUID(), user_id: uid,
     title: input.title?.trim() || 'Untitled routine',
     weekday: input.weekday ?? null,
+    days: input.days ?? (input.weekday != null ? [input.weekday] : null),
     extra_date: input.extra_date ?? null,
     time_of_day: input.time_of_day ?? null,
     color: input.color ?? '#6366f1',

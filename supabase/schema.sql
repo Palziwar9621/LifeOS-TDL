@@ -331,7 +331,8 @@ create table public.reminders (
   important boolean not null default false,
   done boolean not null default false,
   snoozed_until timestamptz,
-  recurrence text check (recurrence in ('daily','weekdays','weekly','monthly','yearly') or recurrence is null),
+  recurrence text check (recurrence in ('daily','weekdays','weekly','custom','monthly','yearly') or recurrence is null),
+  recurrence_days integer[],
   alarm_sound text,
   task_id uuid references public.tasks(id) on delete cascade,
   project_id uuid references public.projects(id) on delete cascade,
@@ -367,7 +368,8 @@ create table public.routine_tasks (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   title text not null,
-  weekday int check (weekday between 0 and 6),
+  weekday int check (weekday between 0 and 6),   -- legacy single day
+  days integer[],                                 -- multi-day repeat (0=Sun..6=Sat)
   extra_date date,
   time_of_day time,
   color text not null default '#6366f1',
@@ -376,7 +378,7 @@ create table public.routine_tasks (
   sort_order int not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  check (weekday is not null or extra_date is not null)
+  check (weekday is not null or extra_date is not null or days is not null)
 );
 create index routine_tasks_user on public.routine_tasks(user_id);
 

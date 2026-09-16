@@ -31,7 +31,6 @@ export function IdeasPage() {
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight">Ideas & Future</h1>
           <p className="text-sm muted">Parking lot for someday/maybe — out of today's way, never forgotten.</p>
         </div>
         <div className="flex gap-2">

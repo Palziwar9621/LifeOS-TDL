@@ -1,13 +1,35 @@
 // LifeOS — Reminders page
 import React, { useState } from 'react';
 import { Icon, Modal, EmptyState, useConfirm } from '../../ui/components';
-import { dbState, createReminder, updateReminder, deleteReminder, snoozeReminder, completeTask } from '../../lib/db';
+import { dbState, createReminder, updateReminder, deleteReminder, snoozeReminder, completeReminder } from '../../lib/db';
 import type { Reminder, Priority } from '../../lib/types';
 import { useApp } from '../store';
 import { requestNotificationPermission, notificationPermission } from '../../lib/notifications';
 import { AlarmSoundPicker } from '../AlarmSoundPicker';
 
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const RECURRENCE_LABELS: Record<string, string> = {
+  daily: 'Every day', weekdays: 'Weekdays (Mon–Fri)', weekly: 'Every week',
+  custom: 'Custom days…', monthly: 'Every month', yearly: 'Every year',
+};
+
+/** Full page (own route / deep links). */
 export function RemindersPage() {
+  return (
+    <div>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-extrabold tracking-tight">Reminders</h1>
+          <p className="text-sm muted">Time-based nudges — independent of tasks.</p>
+        </div>
+      </div>
+      <RemindersPanel />
+    </div>
+  );
+}
+
+/** Embeddable panel (used inside the Tasks page as a tab). */
+export function RemindersPanel() {
   const s = dbState();
   const { toast } = useApp();
   const { confirm, confirmEl } = useConfirm();
@@ -30,11 +52,10 @@ export function RemindersPage() {
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight">Reminders</h1>
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm muted">Time-based nudges — independent of tasks.</p>
+          <button className="btn-primary" onClick={() => setEditing('new')}><Icon name="plus" className="h-4 w-4" /> New reminder</button>
         </div>
-        <button className="btn-primary" onClick={() => setEditing('new')}><Icon name="plus" className="h-4 w-4" /> New reminder</button>
       </div>
 
       {perm !== 'granted' && (
@@ -66,7 +87,7 @@ export function RemindersPage() {
               <div key={r.id} className={`card flex items-center gap-3 px-4 py-3 ${past && !r.done ? 'ring-1 ring-amber-500/40' : ''}`}>
                 <button role="checkbox" aria-checked={r.done} aria-label={`Complete ${r.title}`}
                   className={`checkbox-tap flex h-5 w-5 items-center justify-center rounded-full border-2 ${r.done ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300 dark:border-slate-600'}`}
-                  onClick={() => void updateReminder(r.id, { done: !r.done })}>
+                  onClick={() => void (r.done ? updateReminder(r.id, { done: false }) : completeReminder(r.id))}>
                   {r.done && <Icon name="check" className="h-3 w-3" />}
                 </button>
                 <div className="min-w-0 flex-1" onClick={() => setEditing(r)}>
@@ -76,7 +97,7 @@ export function RemindersPage() {
                   <p className="text-xs muted">
                     {due.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                     {r.snoozed_until && ' · snoozed'}
-                    {r.recurrence && ` · ↻ ${r.recurrence}`}
+                    {r.recurrence && ` · ↻ ${RECURRENCE_LABELS[r.recurrence] ?? r.recurrence}${(r.recurrence === 'weekly' || r.recurrence === 'custom') && r.recurrence_days?.length ? ' (' + r.recurrence_days.map((d) => DAY_LABELS[d]).join(', ') + ')' : ''}`}
                   </p>
                 </div>
                 {!r.done && (
@@ -113,15 +134,23 @@ function ReminderEditor({ reminder, onClose }: { reminder: Reminder | null; onCl
   const [important, setImportant] = useState(reminder?.important ?? false);
   const [alarmSound, setAlarmSound] = useState<string | null>(reminder?.alarm_sound ?? null);
   const [recurrence, setRecurrence] = useState(reminder?.recurrence ?? '');
+  const [recDays, setRecDays] = useState<number[]>(reminder?.recurrence_days ?? []);
   const [linkTask, setLinkTask] = useState(reminder?.task_id ?? '');
+
+  const toggleDay = (d: number) =>
+    setRecDays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort()));
 
   const save = async () => {
     if (!title.trim()) { toast('Give the reminder a title', 'error'); return; }
     const due_at = new Date(`${date}T${time || '09:00'}`).toISOString();
+    if ((recurrence === 'weekly' || recurrence === 'custom') && recDays.length === 0) {
+      toast('Pick at least one day for custom repeat', 'error'); return;
+    }
     const payload = {
       title: title.trim(), notes: notes || null, due_at, priority, important,
       alarm_sound: alarmSound,
       recurrence: (recurrence || null) as any,
+      recurrence_days: (recurrence === 'weekly' || recurrence === 'custom') && recDays.length ? recDays : null,
       task_id: linkTask || null,
     };
     if (reminder) await updateReminder(reminder.id, payload);
@@ -168,11 +197,25 @@ function ReminderEditor({ reminder, onClose }: { reminder: Reminder | null; onCl
           <label className="label">Repeat</label>
           <select className="input" value={recurrence} onChange={(e) => setRecurrence(e.target.value)}>
             <option value="">Once only</option>
-            <option value="daily">Every day</option>
-            <option value="weekly">Every week</option>
-            <option value="monthly">Every month</option>
-            <option value="yearly">Every year</option>
+            {Object.entries(RECURRENCE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
+          {(recurrence === 'weekly' || recurrence === 'custom') && (
+            <div className="mt-2.5">
+              <div className="grid grid-cols-7 gap-1">
+                {DAY_LABELS.map((d, i) => (
+                  <button key={d} type="button" onClick={() => toggleDay(i)}
+                    className={`rounded-lg py-2 text-xs font-bold transition ${recDays.includes(i) ? 'bg-brand-600 text-white' : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
+                    aria-pressed={recDays.includes(i)}>
+                    {d}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1.5 text-xs muted">Repeats only on the picked days — e.g. Monday, Tuesday and Wednesday.</p>
+            </div>
+          )}
+          {recurrence && recurrence !== 'weekly' && recurrence !== 'custom' && (
+            <p className="mt-1.5 text-xs muted">When you complete it, it automatically moves to its next date.</p>
+          )}
         </div>
         <div>
           <label className="label">Alarm sound <span className="muted font-normal">(click to hear it)</span></label>

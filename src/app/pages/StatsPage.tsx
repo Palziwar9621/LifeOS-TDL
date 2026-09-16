@@ -1,23 +1,40 @@
-// LifeOS — Productivity Statistics (gentle, clean charts)
-import React, { useMemo } from 'react';
+// LifeOS — Insights hub: Statistics + Daily/Weekly Review in one place
+import React, { useMemo, useState } from 'react';
 import { ProgressBar, EmptyState } from '../../ui/components';
 import { computeStats } from '../../lib/stats';
 import { weekdayShort } from '../../lib/dates';
 import { useApp } from '../store';
+import { ReviewPanel } from './ReviewPage';
 
 export function StatsPage() {
   const { version } = useApp();
   const stats = useMemo(() => computeStats(), [version]);
+  const [tab, setTab] = useState<'stats' | 'review'>('stats');
 
   const maxDay = Math.max(1, ...stats.byWeekday);
   const max14 = Math.max(1, ...stats.last14.map((d) => d.count));
 
   return (
     <div>
-      <div className="mb-4">
-        <h1 className="text-2xl font-extrabold tracking-tight">Statistics</h1>
-        <p className="text-sm muted">A gentle look at your momentum — not a score.</p>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-extrabold tracking-tight">Insights</h1>
+        <div className="flex overflow-hidden rounded-xl ring-1 ring-slate-900/10 dark:ring-white/10">
+          {(['stats', 'review'] as const).map((t) => (
+            <button key={t} className={`px-4 py-2 text-sm font-semibold ${tab === t ? 'bg-brand-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}
+              onClick={() => setTab(t)}>
+              {t === 'stats' ? '📊 Statistics' : '🕐 Review'}
+            </button>
+          ))}
+        </div>
       </div>
+      {tab === 'review' ? <ReviewPanel /> : <Statistics stats={stats} maxDay={maxDay} max14={max14} />}
+    </div>
+  );
+}
+
+function Statistics({ stats, maxDay, max14 }: { stats: ReturnType<typeof computeStats>; maxDay: number; max14: number }) {
+  return (
+    <div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Completed today" value={stats.todayCount} icon="check" />

@@ -7,18 +7,28 @@ import { TaskRow } from '../TaskRow';
 import { TaskEditor } from '../TaskEditor';
 import type { Task } from '../../lib/types';
 
+/** Full page (own route). */
 export function ReviewPage() {
+  return (
+    <div>
+      <div className="mb-4">
+        <h1 className="text-2xl font-extrabold tracking-tight">Review</h1>
+      </div>
+      <ReviewPanel />
+    </div>
+  );
+}
+
+/** Embeddable panel (used inside the Insights page). */
+export function ReviewPanel() {
   const [tab, setTab] = useState<'daily' | 'weekly'>('daily');
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-extrabold tracking-tight">Review</h1>
-        <div className="flex overflow-hidden rounded-xl ring-1 ring-slate-900/10 dark:ring-white/10">
-          {(['daily', 'weekly'] as const).map((t) => (
-            <button key={t} className={`px-4 py-2 text-sm font-semibold capitalize ${tab === t ? 'bg-brand-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}
-              onClick={() => setTab(t)}>{t} review</button>
-          ))}
-        </div>
+      <div className="mb-4 flex overflow-hidden rounded-xl ring-1 ring-slate-900/10 dark:ring-white/10 md:w-fit">
+        {(['daily', 'weekly'] as const).map((t) => (
+          <button key={t} className={`px-4 py-2 text-sm font-semibold capitalize ${tab === t ? 'bg-brand-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}
+            onClick={() => setTab(t)}>{t} review</button>
+        ))}
       </div>
       {tab === 'daily' ? <DailyReview /> : <WeeklyReview />}
     </div>
