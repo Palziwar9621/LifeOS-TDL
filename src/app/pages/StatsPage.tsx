@@ -1,0 +1,133 @@
+// LifeOS — Productivity Statistics (gentle, clean charts)
+import React, { useMemo } from 'react';
+import { ProgressBar, EmptyState } from '../../ui/components';
+import { computeStats } from '../../lib/stats';
+import { weekdayShort } from '../../lib/dates';
+import { useApp } from '../store';
+
+export function StatsPage() {
+  const { version } = useApp();
+  const stats = useMemo(() => computeStats(), [version]);
+
+  const maxDay = Math.max(1, ...stats.byWeekday);
+  const max14 = Math.max(1, ...stats.last14.map((d) => d.count));
+
+  return (
+    <div>
+      <div className="mb-4">
+        <h1 className="text-2xl font-extrabold tracking-tight">Statistics</h1>
+        <p className="text-sm muted">A gentle look at your momentum — not a score.</p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard label="Completed today" value={stats.todayCount} icon="check" />
+        <StatCard label="This week" value={stats.weekCount} icon="calendar" />
+        <StatCard label="This month" value={stats.monthCount} icon="chart" />
+        <StatCard label="Completion rate" value={`${stats.completionRate}%`} icon="target" />
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <section className="card p-5">
+          <h2 className="section-title mb-4">Last 14 days</h2>
+          <div className="flex h-36 items-end gap-1.5">
+            {stats.last14.map((d) => (
+              <div key={d.date} className="flex flex-1 flex-col items-center gap-1" title={`${d.date}: ${d.count}`}>
+                <div className="w-full rounded-t-md bg-brand-500/80 transition-all" style={{ height: `${(d.count / max14) * 100}%`, minHeight: d.count ? 4 : 2, opacity: d.count ? 1 : 0.25 }} />
+                <span className="text-[9px] muted">{d.date.slice(8)}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="card p-5">
+          <h2 className="section-title mb-4">Most productive days</h2>
+          <div className="space-y-2">
+            {weekdayShort(1).map((name, i) => (
+              <div key={name} className="flex items-center gap-3">
+                <span className="w-10 text-xs font-semibold muted">{name}</span>
+                <div className="progress-track flex-1"><div className="progress-fill" style={{ width: `${(stats.byWeekday[(i + 1) % 7] / maxDay) * 100}%` }} /></div>
+                <span className="w-8 text-right text-xs font-bold">{stats.byWeekday[(i + 1) % 7]}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="card p-5">
+          <h2 className="section-title mb-4">Open tasks by priority</h2>
+          <div className="space-y-2.5">
+            {stats.byPriority.map((p) => (
+              <div key={p.label} className="flex items-center gap-3">
+                <span className="w-20 text-sm font-semibold">{p.icon} {p.label}</span>
+                <div className="progress-track flex-1"><div className="progress-fill" style={{ width: `${(p.count / Math.max(1, ...stats.byPriority.map((x) => x.count))) * 100}%`, background: p.color }} /></div>
+                <span className="w-8 text-right text-xs font-bold">{p.count}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="card p-5">
+          <h2 className="section-title mb-4">Completions by category</h2>
+          {stats.byCategory.length === 0 ? (
+            <p className="text-sm muted">Complete some tasks to see this breakdown.</p>
+          ) : (
+            <div className="space-y-2.5">
+              {stats.byCategory.map((c) => (
+                <div key={c.name} className="flex items-center gap-3">
+                  <span className="w-24 truncate text-sm font-semibold">{c.name}</span>
+                  <div className="progress-track flex-1"><div className="progress-fill" style={{ width: `${(c.count / stats.byCategory[0].count) * 100}%`, background: c.color }} /></div>
+                  <span className="w-8 text-right text-xs font-bold">{c.count}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="card p-5">
+          <h2 className="section-title mb-4">Project progress</h2>
+          {stats.activeProjects.length === 0 ? (
+            <p className="text-sm muted">No active projects.</p>
+          ) : (
+            <div className="space-y-3">
+              {stats.activeProjects.map((p) => <ProgressBar key={p.id} value={p.progress} color={p.color} label={p.name} />)}
+            </div>
+          )}
+        </section>
+
+        <section className="card p-5">
+          <h2 className="section-title mb-4">Focus time</h2>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-2xl bg-slate-100 dark:bg-slate-800 p-4 text-center">
+              <p className="text-2xl font-extrabold">{stats.focusMinutesToday}</p>
+              <p className="text-xs muted">min today</p>
+            </div>
+            <div className="rounded-2xl bg-slate-100 dark:bg-slate-800 p-4 text-center">
+              <p className="text-2xl font-extrabold">{stats.focusMinutesWeek}</p>
+              <p className="text-xs muted">min this week</p>
+            </div>
+          </div>
+          <p className="mt-3 text-xs muted">Open tasks: {stats.inboxCount} in inbox · {stats.overdueCount} overdue</p>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value, icon }: { label: string; value: number | string; icon: string }) {
+  return (
+    <div className="card flex items-center gap-4 p-4">
+      <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-50 dark:bg-brand-900/40 text-brand-600 dark:text-brand-300">
+        <Iconish name={icon} />
+      </span>
+      <div>
+        <p className="text-2xl font-extrabold tracking-tight">{value}</p>
+        <p className="text-xs muted">{label}</p>
+      </div>
+    </div>
+  );
+}
+
+function Iconish({ name }: { name: string }) {
+  // avoid circular import weight; simple glyphs
+  const glyphs: Record<string, string> = { check: '✓', calendar: '📅', chart: '📊', target: '🎯' };
+  return <span className="text-lg">{glyphs[name] ?? '•'}</span>;
+}
