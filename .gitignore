@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Local env files (never commit real keys!)
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+dev.log
+
+# Editor/OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
