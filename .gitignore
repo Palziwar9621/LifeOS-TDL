@@ -18,3 +18,6 @@ dev.log
 .idea/
 .DS_Store
 Thumbs.db
+
+# Tooling internals
+.freebuff/
