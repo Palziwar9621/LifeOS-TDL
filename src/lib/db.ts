@@ -76,6 +76,10 @@ export function getOutboxCount() { return outbox.filter((o) => !o.dead).length; 
 export function getOnline() { return online; }
 export function currentUserId() { return uid; }
 
+let lastSyncError: string | null = null;
+/** Last flush error message (for the sync badge tooltip / settings). */
+export function getLastSyncError(): string | null { return lastSyncError; }
+
 // ------------------------------------------------------------------
 // Boot / teardown
 // ------------------------------------------------------------------
@@ -313,6 +317,7 @@ export async function flush(): Promise<void> {
         done.add(op.id);
       } catch (e: any) {
         const msg = String(e?.message ?? e ?? '');
+        lastSyncError = msg || 'Unknown sync error';
         if (/fetch|network|Failed to fetch/i.test(msg)) break; // offline mid-flush
         if (/duplicate key|violates|unique/i.test(msg) && op.kind === 'insert') {
           done.add(op.id); // already exists server-side; treat as done
@@ -322,10 +327,7 @@ export async function flush(): Promise<void> {
         const cur = outbox.find((o) => o.id === op.id);
         if (cur && cur.attempts >= 12) {
           cur.dead = true;
-          toast('A change could not be synced and was parked. Check Settings → Sync.', 'error');
-          if (op.kind !== 'delete' && op.kind !== 'insert' && op.table !== 'user_settings' && op.ref && op.patch) {
-            // keep local state but warn — never silently overwrite
-          }
+          toast('A change could not be synced and was parked. Check Settings → Data & Sync.', 'error');
         }
         continue;
       }
@@ -333,6 +335,7 @@ export async function flush(): Promise<void> {
     if (done.size) {
       outbox = await markFlushed(done);
       await idbSet('outbox', outbox);
+      lastSyncError = null;
       emit();
       void pull();
     }

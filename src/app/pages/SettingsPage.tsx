@@ -1,7 +1,7 @@
 // LifeOS — Settings
 import React, { useRef, useState } from 'react';
 import { Icon, useConfirm } from '../../ui/components';
-import { dbState, getSettings, updateSettings, createCategory, updateCategory, deleteCategory, createTag, deleteTag, updateProfile, getProfile, pull, createProject, createGoal, createNote, createIdea, createRememberItem } from '../../lib/db';
+import { dbState, getSettings, updateSettings, createCategory, updateCategory, deleteCategory, createTag, deleteTag, updateProfile, getProfile, pull, createProject, createGoal, createNote, createIdea, createRememberItem, getLastSyncError } from '../../lib/db';
 import { useApp } from '../store';
 import { todayStr } from '../../lib/dates';
 import { exportAllJson, downloadJson, tasksCsv, parseBackupJson, readFileText } from '../../lib/backup';
@@ -216,6 +216,17 @@ function SyncSection({ toast }: any) {
           <span>Pending changes</span>
           <b>{pendingOps}</b>
         </div>
+        {getLastSyncError() && pendingOps > 0 && (
+          <div className="rounded-xl bg-rose-500/10 px-4 py-3">
+            <p className="text-xs font-bold text-rose-600 dark:text-rose-300">Last sync error</p>
+            <p className="mt-0.5 break-words text-xs text-rose-600/90 dark:text-rose-300/90">{getLastSyncError()}</p>
+            {/column|relation|does not exist|schema/i.test(getLastSyncError() ?? '') && (
+              <p className="mt-1.5 text-xs text-rose-600/80 dark:text-rose-300/80">
+                This usually means a database migration hasn't run yet. Check the project README / migrations folder in the repo and run the latest migration in Supabase → SQL Editor.
+              </p>
+            )}
+          </div>
+        )}
         <div className="flex items-center justify-between rounded-xl bg-slate-100 dark:bg-slate-800 px-4 py-3">
           <span>Backend</span>
           <b className="truncate">{cfg?.url ? new URL(cfg.url).hostname : 'not configured'}</b>

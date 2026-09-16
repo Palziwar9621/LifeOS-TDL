@@ -4,7 +4,7 @@ import { useApp } from './store';
 import { isDemoMode } from './store';
 import type { Page } from './store';
 import { Icon, Logo, Avatar, useConfirm } from '../ui/components';
-import { getProfile, getOutboxCount, subscribeDb } from '../lib/db';
+import { getProfile, getOutboxCount, subscribeDb, getLastSyncError } from '../lib/db';
 import { QuickAddModal } from './quickadd';
 
 const NAV: { key: Page; label: string; icon: string }[] = [
@@ -154,14 +154,18 @@ export function Shell({ children }: { children: React.ReactNode }) {
 function SyncBadge() {
   const { online, syncNow, pendingOps } = useApp();
   const [busy, setBusy] = useState(false);
+  const err = getLastSyncError();
   return (
     <button
-      className="mt-2 flex items-center gap-2 rounded-xl bg-slate-900/5 dark:bg-white/10 px-3 py-2 text-xs font-semibold muted hover:bg-slate-900/10 dark:hover:bg-white/20 transition"
+      className={`mt-2 flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold transition ${err && pendingOps > 0 ? 'bg-rose-500/10 text-rose-600 dark:text-rose-300 hover:bg-rose-500/20' : 'bg-slate-900/5 dark:bg-white/10 muted hover:bg-slate-900/10 dark:hover:bg-white/20'}`}
       onClick={() => { setBusy(true); void syncNow().finally(() => setBusy(false)); }}
-      title="Sync now"
+      title={err && pendingOps > 0 ? `Sync problem: ${err}` : 'Sync now'}
     >
       <Icon name="sync" className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} />
-      {online ? (pendingOps > 0 ? `${pendingOps} change${pendingOps > 1 ? 's' : ''} pending` : 'Synced') : 'Offline — tap to retry'}
+      {!online ? 'Offline — tap to retry'
+        : pendingOps > 0
+          ? (err ? `${pendingOps} pending — tap for reason` : `${pendingOps} change${pendingOps > 1 ? 's' : ''} pending`)
+          : 'Synced'}
     </button>
   );
 }
