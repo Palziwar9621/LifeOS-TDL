@@ -5,6 +5,7 @@ import { dbState, createReminder, updateReminder, deleteReminder, snoozeReminder
 import type { Reminder, Priority } from '../../lib/types';
 import { useApp } from '../store';
 import { requestNotificationPermission, notificationPermission } from '../../lib/notifications';
+import { AlarmSoundPicker } from '../AlarmSoundPicker';
 
 export function RemindersPage() {
   const s = dbState();
@@ -110,6 +111,8 @@ function ReminderEditor({ reminder, onClose }: { reminder: Reminder | null; onCl
   const [time, setTime] = useState((reminder?.due_at ?? new Date(Date.now() + 3600e3).toISOString()).slice(11, 16));
   const [priority, setPriority] = useState<Priority>(reminder?.priority ?? 'medium');
   const [important, setImportant] = useState(reminder?.important ?? false);
+  const [alarmSound, setAlarmSound] = useState<string | null>(reminder?.alarm_sound ?? null);
+  const [recurrence, setRecurrence] = useState(reminder?.recurrence ?? '');
   const [linkTask, setLinkTask] = useState(reminder?.task_id ?? '');
 
   const save = async () => {
@@ -117,6 +120,8 @@ function ReminderEditor({ reminder, onClose }: { reminder: Reminder | null; onCl
     const due_at = new Date(`${date}T${time || '09:00'}`).toISOString();
     const payload = {
       title: title.trim(), notes: notes || null, due_at, priority, important,
+      alarm_sound: alarmSound,
+      recurrence: (recurrence || null) as any,
       task_id: linkTask || null,
     };
     if (reminder) await updateReminder(reminder.id, payload);
@@ -158,6 +163,20 @@ function ReminderEditor({ reminder, onClose }: { reminder: Reminder | null; onCl
         <div>
           <label className="label">Notes</label>
           <textarea className="input min-h-16" value={notes} onChange={(e) => setNotes(e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Repeat</label>
+          <select className="input" value={recurrence} onChange={(e) => setRecurrence(e.target.value)}>
+            <option value="">Once only</option>
+            <option value="daily">Every day</option>
+            <option value="weekly">Every week</option>
+            <option value="monthly">Every month</option>
+            <option value="yearly">Every year</option>
+          </select>
+        </div>
+        <div>
+          <label className="label">Alarm sound <span className="muted font-normal">(click to hear it)</span></label>
+          <AlarmSoundPicker value={alarmSound} onChange={setAlarmSound} allowInherit />
         </div>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" className="checkbox-tap" checked={important} onChange={(e) => setImportant(e.target.checked)} />

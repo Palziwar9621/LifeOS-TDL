@@ -1,12 +1,14 @@
-// LifeOS — web notifications + reminder scheduler
+// LifeOS — web notifications + alarm scheduler
 import { dbState, snoozeReminder, updateReminder, completeTask, updateTask, getSettings } from './db';
-import { splitIso, todayStr, dateTimeFrom } from './dates';
-import type { Reminder, Task } from './types';
+import { splitIso, todayStr, dateTimeFrom, parseDateStr } from './dates';
+import { startAlarm, wasDismissed, clearDismissed } from './alarm';
+import type { Reminder, Task, RoutineTask } from './types';
 
 type Timer = ReturnType<typeof setInterval>;
 
 let timer: Timer | null = null;
 const notified = new Set<string>();
+let lastDateKey = '';
 let clickHandler: ((r: Reminder | null) => void) | null = null;
 let taskClickHandler: ((t: Task) => void) | null = null;
 
@@ -63,7 +65,10 @@ export function startReminderScheduler() {
     try {
       if (getSettings().notifications_enabled === false) return;
       const now = Date.now();
+      const today = todayStr();
+      if (today !== lastDateKey) { lastDateKey = today; clearDismissed(); }
       const s = dbState();
+      const defaultSound = (getSettings().data as any)?.alarm_sound as string | undefined;
 
       for (const r of s.reminders) {
         if (r.done || r.deleted) continue;
@@ -72,16 +77,16 @@ export function startReminderScheduler() {
         if (fireAt <= now && now - fireAt < 60000 * 60 * 12 && !notified.has(key)) {
           notified.add(key);
           show(
-            r.important ? '⭐ ' + r.title : r.title,
-            r.notes ?? 'Reminder',
+            '⏰ ' + (r.important ? '⭐ ' + r.title : r.title),
+            r.notes ?? 'Reminder — tap to open LifeOS',
             r.id + ':' + (r.snoozed_until ?? r.due_at),
             () => clickHandler?.(r),
           );
+          if (!wasDismissed(key)) startAlarm(key, defaultSound as any);
           void updateReminder(r.id, { fired_at: new Date().toISOString() } as any);
         }
       }
 
-      const today = todayStr();
       for (const t of s.tasks) {
         if (t.deleted || t.archived || t.status === 'completed' || t.status === 'cancelled') continue;
         const fire = taskReminderFireTime(t);
@@ -91,7 +96,42 @@ export function startReminderScheduler() {
         const key = `task:${t.id}:${t.due_date}:${t.due_time}`;
         if (fireMs <= now && now - fireMs < 60000 * 60 * 12 && !notified.has(key)) {
           notified.add(key);
-          show('Task due soon', t.title, t.id + ':' + t.due_date, () => taskClickHandler?.(t));
+          show('⏰ Task due soon', t.title, t.id + ':' + t.due_date, () => taskClickHandler?.(t));
+          if (!wasDismissed(key)) startAlarm(key, defaultSound as any);
+        }
+      }
+
+      // Routine tasks with a time_of_day — alarm for today's unticked items.
+      for (const rt of s.routine_tasks) {
+        if (rt.archived || !rt.time_of_day) continue;
+        const matches = rt.weekday === parseDateStr(today).getDay() || rt.extra_date === today;
+        if (!matches) continue;
+        const done = s.routine_completions.some((c) => c.task_id === rt.id && c.done_date === today);
+        if (done) continue;
+        const [h, m] = rt.time_of_day.split(':').map(Number);
+        const fireMs = parseDateStr(today).getTime() + ((h * 60 + (m ?? 0)) * 60000 - new Date().getTimezoneOffset() * -60000);
+        const fireAt = new Date(today + 'T' + rt.time_of_day).getTime();
+        const key = `routine:${rt.id}:${today}`;
+        if (fireAt <= now && now - fireAt < 60000 * 60 * 2 && !notified.has(key)) {
+          notified.add(key);
+          show('⏰ Routine time', rt.title, rt.id + ':' + today);
+          if (!wasDismissed(key)) startAlarm(key, defaultSound as any);
+        }
+        void fireMs;
+      }
+
+      // Remember-item anniversaries (birthdays, monthly dates…).
+      for (const item of s.remember_items) {
+        if (item.deleted || !item.reminder_freq || !item.reminder_day) continue;
+        const isAnniv = item.reminder_freq === 'yearly'
+          ? parseInt(item.reminder_day.slice(5, 7), 10) === parseInt(today.slice(5, 7), 10) && parseInt(item.reminder_day.slice(8, 10), 10) === parseInt(today.slice(8, 10), 10)
+          : parseInt(item.reminder_day.slice(8, 10), 10) === parseInt(today.slice(8, 10), 10);
+        if (!isAnniv) continue;
+        const key = `anniv:${item.id}:${today}`;
+        if (!notified.has(key)) {
+          notified.add(key);
+          show('🎂 ' + item.title, item.reminder_note || 'Remember this date!', item.id + ':' + today);
+          if (!wasDismissed(key)) startAlarm(key, defaultSound as any);
         }
       }
     } catch {

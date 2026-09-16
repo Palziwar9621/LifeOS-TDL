@@ -6,6 +6,7 @@ import { useApp } from '../store';
 import { todayStr } from '../../lib/dates';
 import { exportAllJson, downloadJson, tasksCsv, parseBackupJson, readFileText } from '../../lib/backup';
 import { requestNotificationPermission, notificationPermission } from '../../lib/notifications';
+import { AlarmSoundPicker } from '../AlarmSoundPicker';
 import { updateUserPassword } from '../../lib/auth';
 import { getClient, loadSupabaseConfig } from '../../lib/supabase';
 import { createTask } from '../../lib/db';
@@ -112,6 +113,7 @@ function AppearanceSection({ theme, setTheme }: any) {
 function NotificationsSection({ toast }: any) {
   const settings = getSettings();
   const [enabled, setEnabled] = useState(settings.notifications_enabled !== false);
+  const [alarmSound, setAlarmSound] = useState<string | null>((settings.data as any)?.alarm_sound ?? 'chime');
   const perm = notificationPermission();
 
   return (
@@ -132,6 +134,10 @@ function NotificationsSection({ toast }: any) {
             }
           }} />
       </label>
+      <div className="divider my-3" />
+      <p className="text-sm font-semibold">Default alarm sound</p>
+      <p className="mb-2 text-xs muted">Rings when any reminder, task or routine fires — until you dismiss it (max 3 min). Click a sound to hear it.</p>
+      <AlarmSoundPicker value={alarmSound} onChange={(v) => { setAlarmSound(v); void updateSettings({ alarm_sound: v }); }} />
       <div className="divider my-3" />
       <p className="text-xs muted">
         Permission: <b>{perm === 'granted' ? 'granted ✓' : perm === 'denied' ? 'blocked ✕ (enable in browser site settings)' : 'not asked yet'}</b>

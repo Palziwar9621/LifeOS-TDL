@@ -173,6 +173,12 @@ export interface RememberItem {
   pinned: boolean;
   favorite: boolean;
   deleted: boolean;
+  /** Anniversary reminder: null = off; 'yearly' (birthday) or 'monthly'. */
+  reminder_freq: 'yearly' | 'monthly' | null;
+  /** Anchor date yyyy-MM-dd — day (and month for yearly) drive the alarm. */
+  reminder_day: string | null;
+  reminder_note: string | null;
+  reminder_time: string | null; // HH:mm:ss local fire time
   sort_order: number;
   created_at: string;
   updated_at: string;
@@ -208,6 +214,7 @@ export interface Reminder {
   done: boolean;
   snoozed_until: string | null;
   recurrence: ReminderRecurrence | null;
+  alarm_sound: string | null;     // AlarmSoundId; null = app default
   task_id: string | null;
   project_id: string | null;
   goal_id: string | null;
@@ -248,6 +255,7 @@ export interface RoutineTask {
   extra_date: string | null;
   time_of_day: string | null;   // HH:mm:ss
   color: string;
+  alarm_sound: string | null;   // AlarmSoundId; null = app default
   archived: boolean;
   sort_order: number;
   created_at: string;

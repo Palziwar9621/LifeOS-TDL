@@ -45,6 +45,9 @@ export function RememberPage() {
       <div className="mt-2 flex flex-wrap gap-1.5">
         {item.category && <span className="chip chip-brand">{item.category}</span>}
         {item.tags.map((t) => <span key={t} className="chip">#{t}</span>)}
+        {item.reminder_freq && item.reminder_day && (
+          <span className="chip chip-warn">🎂 {item.reminder_freq === 'yearly' ? 'Yearly' : 'Monthly'} · {dayLabel(item.reminder_day, item.reminder_freq)}</span>
+        )}
       </div>
     </section>
   );
@@ -58,6 +61,8 @@ export function RememberPage() {
         </div>
         <button className="btn-primary" onClick={() => setEditing('new')}><Icon name="plus" className="h-4 w-4" /> Add</button>
       </div>
+
+      <UpcomingAnniversaries onEdit={(item) => setEditing(item)} />
 
       <div className="mb-4 flex flex-wrap gap-2">
         <input className="input !w-56 !py-2" placeholder="Search…" value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -91,19 +96,67 @@ export function RememberPage() {
   );
 }
 
+/** Next 3 upcoming anniversary alarms, sorted by days away. */
+function UpcomingAnniversaries({ onEdit }: { onEdit: (i: RememberItem) => void }) {
+  const s = dbState();
+  const today = new Date();
+  const fmt = (ymd: string, freq: string) => {
+    const [, m, d] = ymd.split('-').map(Number);
+    if (freq === 'monthly') return `day ${d} monthly`;
+    // next occurrence of month/day
+    let next = new Date(today.getFullYear(), m - 1, d);
+    if (next < new Date(today.getFullYear(), today.getMonth(), today.getDate())) next = new Date(today.getFullYear() + 1, m - 1, d);
+    const days = Math.round((next.getTime() - new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()) / 86400000);
+    const label = next.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    return days === 0 ? 'TODAY' : days === 1 ? 'Tomorrow' : `${label} · in ${days}d`;
+  };
+  const upcoming = s.remember_items
+    .filter((i) => !i.deleted && i.reminder_freq && i.reminder_day)
+    .map((i) => ({ i, when: fmt(i.reminder_day!, i.reminder_freq!) }))
+    .filter((x) => x.when !== 'day 31 monthly')
+    .slice(0, 4);
+  if (upcoming.length === 0) return null;
+  return (
+    <div className="card mb-4 p-3 flex flex-wrap items-center gap-2 border-l-4 border-l-amber-400">
+      <span className="text-sm font-bold">🎂 Coming up:</span>
+      {upcoming.map(({ i, when }) => (
+        <button key={i.id} className="chip chip-warn" onClick={() => onEdit(i)} title="Click to edit">
+          {i.title} · {when}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function dayLabel(ymd: string, freq: 'yearly' | 'monthly'): string {
+  const [, m, d] = ymd.split('-').map(Number);
+  const month = new Date(2000, m - 1, 1).toLocaleString(undefined, { month: 'short' });
+  return freq === 'yearly' ? `${month} ${d}` : `day ${d} of every month`;
+}
+
 function RememberEditor({ item, onClose }: { item: RememberItem | null; onClose: () => void }) {
   const { toast } = useApp();
   const [title, setTitle] = useState(item?.title ?? '');
   const [content, setContent] = useState(item?.content ?? '');
   const [category, setCategory] = useState(item?.category ?? '');
   const [tags, setTags] = useState<string[]>(item?.tags ?? []);
+  const [remFreq, setRemFreq] = useState<'' | 'yearly' | 'monthly'>(item?.reminder_freq ?? '');
+  const [remDay, setRemDay] = useState(item?.reminder_day ?? new Date().toISOString().slice(0, 10));
+  const [remTime, setRemTime] = useState(item?.reminder_time ? item.reminder_time.slice(0, 5) : '09:00');
+  const [remNote, setRemNote] = useState(item?.reminder_note ?? '');
 
   const save = async () => {
     if (!title.trim()) { toast('Give it a title', 'error'); return; }
-    const payload = { title: title.trim(), content, category: category || null, tags };
+    const payload = {
+      title: title.trim(), content, category: category || null, tags,
+      reminder_freq: (remFreq || null) as any,
+      reminder_day: remFreq ? remDay : null,
+      reminder_time: remFreq ? `${remTime}:00` : null,
+      reminder_note: remFreq ? (remNote || null) : null,
+    };
     if (item) await updateRememberItem(item.id, payload);
     else await createRememberItem(payload);
-    toast(item ? 'Saved' : 'Added', 'success');
+    toast(remFreq ? 'Saved — you\'ll get the alarm every time 🎂' : (item ? 'Saved' : 'Added'), 'success');
     onClose();
   };
 
@@ -127,6 +180,27 @@ function RememberEditor({ item, onClose }: { item: RememberItem | null; onClose:
             <label className="label">Tags</label>
             <TagInputLite tags={tags} onChange={setTags} />
           </div>
+        </div>
+        <div className="rounded-xl border border-slate-900/10 dark:border-white/10 p-3">
+          <label className="label">🎂 Anniversary alarm <span className="muted font-normal">(birthdays, bills, renewals)</span></label>
+          <div className="grid grid-cols-3 gap-2">
+            <select className="input" value={remFreq} onChange={(e) => setRemFreq(e.target.value as any)} aria-label="Anniversary frequency">
+              <option value="">Off</option>
+              <option value="yearly">Every year</option>
+              <option value="monthly">Every month</option>
+            </select>
+            <input type="date" className="input" value={remDay} onChange={(e) => setRemDay(e.target.value)} disabled={!remFreq} aria-label="Anniversary date" />
+            <input type="time" className="input" value={remTime} onChange={(e) => setRemTime(e.target.value)} disabled={!remFreq} aria-label="Alarm time" />
+          </div>
+          {remFreq && (
+            <input className="input mt-2" value={remNote} onChange={(e) => setRemNote(e.target.value)}
+              placeholder="Notification message (optional) — e.g. Buy a gift!" />
+          )}
+          {remFreq && (
+            <p className="mt-1.5 text-xs muted">
+              The alarm {remFreq === 'yearly' ? 'rings every year on this date' : 'rings on this day of every month'} at {remTime}.
+            </p>
+          )}
         </div>
         <div className="flex justify-end gap-2 border-t border-slate-900/5 dark:border-white/10 pt-4">
           <button className="btn-secondary" onClick={onClose}>Cancel</button>

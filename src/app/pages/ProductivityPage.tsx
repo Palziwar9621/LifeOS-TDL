@@ -7,6 +7,7 @@ import {
 } from '../../lib/db';
 import { todayStr, toLocalDateStr, parseDateStr, addDays, startOfWeek, fmtDate } from '../../lib/dates';
 import type { RoutineTask } from '../../lib/types';
+import { AlarmSoundPicker } from '../AlarmSoundPicker';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAY_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -228,6 +229,7 @@ function RoutineEditor({ task, defaultDate, onClose }: { task: RoutineTask | nul
   const [extraDate, setExtraDate] = useState(task?.extra_date ?? defaultDate);
   const [timeOfDay, setTimeOfDay] = useState(task?.time_of_day ? task.time_of_day.slice(0, 5) : '');
   const [color, setColor] = useState(task?.color ?? COLORS[0]);
+  const [alarmSound, setAlarmSound] = useState<string | null>(task?.alarm_sound ?? null);
 
   const save = async () => {
     if (!title.trim()) { toast('Give the task a name', 'error'); return; }
@@ -237,6 +239,7 @@ function RoutineEditor({ task, defaultDate, onClose }: { task: RoutineTask | nul
       extra_date: repeat === 'custom' ? extraDate : null,
       time_of_day: timeOfDay ? `${timeOfDay}:00` : null,
       color,
+      alarm_sound: alarmSound,
     };
     if (task) await updateRoutineTask(task.id, payload);
     else await createRoutineTask(payload);
@@ -296,6 +299,10 @@ function RoutineEditor({ task, defaultDate, onClose }: { task: RoutineTask | nul
               ))}
             </div>
           </div>
+        </div>
+        <div>
+          <label className="label">Alarm sound <span className="muted font-normal">(rings at the task time — click to hear)</span></label>
+          <AlarmSoundPicker value={alarmSound} onChange={setAlarmSound} allowInherit />
         </div>
         <div className="flex justify-end gap-2 border-t border-slate-900/5 dark:border-white/10 pt-4">
           <button className="btn-secondary" onClick={onClose}>Cancel</button>
