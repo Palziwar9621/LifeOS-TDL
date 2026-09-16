@@ -7,7 +7,7 @@ import { Dashboard } from './pages/Dashboard';
 import { TodayPage } from './pages/TodayPage';
 import { TasksPage } from './pages/TasksPage';
 import { CalendarPage } from './pages/CalendarPage';
-import { WeeklyPage } from './pages/WeeklyPage';
+import { ProductivityPage } from './pages/ProductivityPage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { GoalsPage } from './pages/GoalsPage';
 import { NotesPage } from './pages/NotesPage';
@@ -15,7 +15,6 @@ import { IdeasPage } from './pages/IdeasPage';
 import { RememberPage } from './pages/RememberPage';
 import { LibraryPage } from './pages/LibraryPage';
 import { StatsPage } from './pages/StatsPage';
-import { ProductivityPage } from './pages/ProductivityPage';
 import { FocusPage } from './pages/FocusPage';
 import { RemindersPage } from './pages/RemindersPage';
 import { ReviewPage } from './pages/ReviewPage';
@@ -54,7 +53,7 @@ function PageRouter() {
     case 'today': return <TodayPage />;
     case 'tasks': return <TasksPage />;
     case 'calendar': return <CalendarPage />;
-    case 'weekly': return <WeeklyPage />;
+    case 'weekly': return <ProductivityPage />; // merged: plan view lives inside Productivity
     case 'projects': return <ProjectsPage />;
     case 'goals': return <GoalsPage />;
     case 'notes':

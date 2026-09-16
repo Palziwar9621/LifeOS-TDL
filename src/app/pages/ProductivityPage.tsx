@@ -1,6 +1,6 @@
-// LifeOS — Productivity: routine tasks with daily check-offs.
-// Two views: "Day" (check off today / any day) and "Week" (planner grid showing
-// every routine across Mon–Sun, like the weekly planner).
+// LifeOS — Productivity: routine tasks + weekly plan, in one place.
+// Three views: "Day" (check off today / any day), "Week" (routine grid),
+// and "Plan" (weekly schedule time blocks).
 import React, { useMemo, useState } from 'react';
 import { Icon, Modal, EmptyState, useConfirm } from '../../ui/components';
 import {
@@ -10,6 +10,7 @@ import {
 import { todayStr, toLocalDateStr, parseDateStr, addDays, startOfWeek, fmtDate } from '../../lib/dates';
 import type { RoutineTask } from '../../lib/types';
 import { AlarmSoundPicker } from '../AlarmSoundPicker';
+import { WeeklyPlanPanel } from './WeeklyPage';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAY_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -28,10 +29,11 @@ export function ProductivityPage() {
   getDbVersion(); // re-render on any db change
   const s = dbState();
   const { confirm, confirmEl } = useConfirm();
+  const { pageParams } = useApp();
   const today = todayStr();
   const [editing, setEditing] = useState<RoutineTask | 'new' | null>(null);
   const [viewDate, setViewDate] = useState(today);
-  const [view, setView] = useState<'day' | 'week'>('day');
+  const [view, setView] = useState<'day' | 'week' | 'plan'>(() => (pageParams.view === 'plan' ? 'plan' : 'day'));
 
   const isToday = viewDate === today;
 
@@ -76,14 +78,16 @@ export function ProductivityPage() {
         </div>
         <div className="flex items-center gap-2">
           <div className="flex overflow-hidden rounded-xl ring-1 ring-slate-900/10 dark:ring-white/10">
-            {(['day', 'week'] as const).map((v) => (
+            {(['day', 'week', 'plan'] as const).map((v) => (
               <button key={v} className={`px-3.5 py-2 text-sm font-semibold capitalize ${view === v ? 'bg-brand-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}
-                onClick={() => setView(v)}>{v}</button>
+                onClick={() => setView(v)}>{v === 'plan' ? 'plan' : v}</button>
             ))}
           </div>
-          <button className="btn-primary" onClick={() => setEditing('new')}>
-            <Icon name="plus" className="h-4 w-4" /> Add
-          </button>
+          {view !== 'plan' && (
+            <button className="btn-primary" onClick={() => setEditing('new')}>
+              <Icon name="plus" className="h-4 w-4" /> Add
+            </button>
+          )}
         </div>
       </div>
 
@@ -110,7 +114,9 @@ export function ProductivityPage() {
         </div>
       </div>
 
-      {view === 'day' ? (
+      {view === 'plan' ? (
+        <WeeklyPlanPanel />
+      ) : view === 'day' ? (
         <>
           {/* Day header + progress */}
           <div className="card p-4 mb-4">

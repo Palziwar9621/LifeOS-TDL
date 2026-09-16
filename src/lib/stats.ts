@@ -16,6 +16,19 @@ export interface StatsBundle {
   last14: { date: string; count: number }[];
   focusMinutesToday: number;
   focusMinutesWeek: number;
+  // Routine (Productivity tab) statistics
+  routine: {
+    totalTasks: number;
+    doneToday: number;
+    scheduledToday: number;
+    todayPct: number;
+    /** Completion ratio per weekday over the last 28 days (0..100). */
+    weekdayPct: number[];       // index 0=Sun..6=Sat
+    /** Ticks per day over the last 14 days. */
+    last14: { date: string; count: number }[];
+    /** Best current all-done streak. */
+    streak: number;
+  };
 }
 
 export function computeStats(): StatsBundle {
@@ -93,6 +106,47 @@ export function computeStats(): StatsBundle {
   const focusToday = s.focus_sessions.filter((f) => f.started_at.slice(0, 10) === today && f.completed);
   const focusWeek = s.focus_sessions.filter((f) => f.started_at >= new Date(weekStart).toISOString() && f.completed);
 
+  // ---- Routine (Productivity) statistics ----
+  const routines = s.routine_tasks.filter((t) => !t.archived);
+  const routineDaysOf = (t: any): number[] => {
+    if (t.days && t.days.length) return t.days as number[];
+    if (t.weekday != null) return [t.weekday as number];
+    return [];
+  };
+  const scheduledOn = (date: string) => {
+    const wd = parseDateStr(date).getDay();
+    return routines.filter((t) => routineDaysOf(t).includes(wd) || t.extra_date === date);
+  };
+  const doneOn = (taskId: string, date: string) =>
+    s.routine_completions.some((c) => c.task_id === taskId && c.done_date === date);
+
+  const scheduledToday = scheduledOn(today);
+  const routineDoneToday = scheduledToday.filter((t) => doneOn(t.id, today)).length;
+
+  const weekdayTicks = [0, 0, 0, 0, 0, 0, 0];   // completed
+  const weekdaySlots = [0, 0, 0, 0, 0, 0, 0];   // scheduled
+  const routineLast14: { date: string; count: number }[] = [];
+  for (let i = 27; i >= 0; i--) {
+    const d = addDays(today, -i);
+    const wd = parseDateStr(d).getDay();
+    const list = scheduledOn(d);
+    const done = list.filter((t) => doneOn(t.id, d)).length;
+    weekdaySlots[wd] += list.length;
+    weekdayTicks[wd] += done;
+    if (i < 14) routineLast14.push({ date: d, count: done });
+  }
+  const weekdayPct = weekdaySlots.map((slots, i) => slots === 0 ? 0 : Math.round((weekdayTicks[i] / slots) * 100));
+
+  let routineStreak = 0;
+  for (let i = 0; i < 90; i++) {
+    const d = addDays(today, -i);
+    const list = scheduledOn(d);
+    if (list.length === 0) continue;
+    const all = list.every((t) => doneOn(t.id, d));
+    if (all) routineStreak++;
+    else break;
+  }
+
   return {
     todayCount: doneToday.length,
     weekCount: doneThisWeek.length,
@@ -107,5 +161,14 @@ export function computeStats(): StatsBundle {
     last14,
     focusMinutesToday: focusToday.reduce((a, f) => a + (f.completed_minutes ?? 0), 0),
     focusMinutesWeek: focusWeek.reduce((a, f) => a + (f.completed_minutes ?? 0), 0),
+    routine: {
+      totalTasks: routines.length,
+      scheduledToday: scheduledToday.length,
+      doneToday: routineDoneToday,
+      todayPct: scheduledToday.length ? Math.round((routineDoneToday / scheduledToday.length) * 100) : 0,
+      weekdayPct,
+      last14: routineLast14,
+      streak: routineStreak,
+    },
   };
 }

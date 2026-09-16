@@ -1,15 +1,15 @@
-// LifeOS — Weekly Planner: time blocks per weekday (schedule ≠ tasks)
+// LifeOS — Weekly Plan panel: time blocks per weekday (schedule ≠ tasks).
+// Embedded as a view inside the Productivity page (merged nav); still fully functional.
 import React, { useState } from 'react';
 import { Icon, Modal, EmptyState } from '../../ui/components';
 import { dbState, createScheduleBlock, updateScheduleBlock, deleteScheduleBlock } from '../../lib/db';
-import { fmtTime, todayStr, weekdayShort } from '../../lib/dates';
+import { fmtTime, todayStr } from '../../lib/dates';
 import { useConfirm } from '../../ui/components';
 import type { ScheduleBlock } from '../../lib/types';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const HOURS = Array.from({ length: 19 }, (_, i) => i + 5); // 5:00 → 23:00
 
-export function WeeklyPage() {
+export function WeeklyPlanPanel() {
   const s = dbState();
   const { confirm, confirmEl } = useConfirm();
   const [editing, setEditing] = useState<ScheduleBlock | 'new' | null>(null);
@@ -20,11 +20,8 @@ export function WeeklyPage() {
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight">Weekly Plan</h1>
-          <p className="text-sm muted">Time you've allocated. Tasks are separate — link them if you like.</p>
-        </div>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm muted">Time you've allocated. Tasks are separate — link them if you like.</p>
         <button className="btn-primary" onClick={() => setEditing('new')}><Icon name="plus" className="h-4 w-4" /> Add block</button>
       </div>
 
@@ -33,7 +30,7 @@ export function WeeklyPage() {
           <div key={dow} className={`card p-3 ${dow === todayDow ? 'ring-2 ring-brand-500' : ''}`}>
             <div className="mb-2 flex items-center justify-between">
               <h2 className="text-sm font-bold uppercase tracking-wide">{DAY_NAMES[dow].slice(0, 3)}</h2>
-              <button className="btn-ghost btn-sm !px-1.5" aria-label={`Add block on ${DAY_NAMES[dow]}`} onClick={() => { setEditing('new'); setEditingDow(dow); }}>
+              <button className="btn-ghost btn-sm !px-1.5" aria-label={`Add block on ${DAY_NAMES[dow]}`} onClick={() => { pendingDow = dow; setEditing('new'); }}>
                 <Icon name="plus" className="h-3.5 w-3.5" />
               </button>
             </div>
@@ -61,8 +58,6 @@ export function WeeklyPage() {
 }
 
 let pendingDow: number | null = null;
-function setEditingDow(d: number) { pendingDow = d; }
-function setPendingDow(d: number | null) { pendingDow = d; }
 
 function parseDateStr(s: string): Date {
   const [y, m, d] = s.split('-').map(Number);

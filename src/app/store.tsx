@@ -138,6 +138,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const navigate = useCallback((p: Page, params?: Record<string, string>) => {
+    // 'weekly' merged into Productivity's Plan view (keep old links working)
+    if (p === 'weekly') { setPage('productivity'); setPageParams({ view: 'plan', ...(params ?? {}) }); window.scrollTo(0, 0); return; }
     setPage(p);
     setPageParams(params ?? {});
     window.scrollTo(0, 0);

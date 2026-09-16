@@ -12,7 +12,6 @@ const NAV: { key: Page; label: string; icon: string }[] = [
   { key: 'today', label: 'Today', icon: 'sun' },
   { key: 'tasks', label: 'Tasks', icon: 'list' },
   { key: 'calendar', label: 'Calendar', icon: 'calendar' },
-  { key: 'weekly', label: 'Weekly Plan', icon: 'calendar' },
   { key: 'productivity', label: 'Productivity', icon: 'check' },
   { key: 'projects', label: 'Projects', icon: 'folder' },
   { key: 'goals', label: 'Goals', icon: 'target' },
