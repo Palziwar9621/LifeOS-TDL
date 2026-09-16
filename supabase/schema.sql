@@ -356,6 +356,35 @@ create table public.focus_sessions (
 create index focus_sessions_user on public.focus_sessions(user_id);
 
 -- ============================================================
+-- ROUTINE TASKS (Productivity tab — daily weekday habits) + check-offs
+-- ============================================================
+create table public.routine_tasks (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  title text not null,
+  weekday int check (weekday between 0 and 6),
+  extra_date date,
+  time_of_day time,
+  color text not null default '#6366f1',
+  archived boolean not null default false,
+  sort_order int not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check (weekday is not null or extra_date is not null)
+);
+create index routine_tasks_user on public.routine_tasks(user_id);
+
+create table public.routine_completions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  task_id uuid not null references public.routine_tasks(id) on delete cascade,
+  done_date date not null,
+  created_at timestamptz not null default now(),
+  unique (task_id, done_date)
+);
+create index routine_completions_user on public.routine_completions(user_id);
+
+-- ============================================================
 -- USER SETTINGS
 -- ============================================================
 create table public.user_settings (
@@ -377,7 +406,7 @@ begin
   foreach t in array array[
     'categories','tags','projects','project_milestones','goals','goal_milestones',
     'tasks','subtasks','notes','ideas','remember_items','schedule_blocks',
-    'reminders','focus_sessions'
+    'reminders','focus_sessions','routine_tasks','routine_completions'
   ]
   loop
     execute format('alter table public.%I enable row level security', t);
@@ -394,7 +423,7 @@ declare t text;
 begin
   foreach t in array array[
     'profiles','categories','tags','projects','project_milestones','goals','goal_milestones',
-    'tasks','subtasks','notes','ideas','remember_items','schedule_blocks','reminders'
+    'tasks','subtasks','notes','ideas','remember_items','schedule_blocks','reminders','routine_tasks'
   ]
   loop
     execute format(
@@ -421,7 +450,7 @@ begin
   foreach t in array array[
     'profiles','categories','tags','projects','project_milestones','goals','goal_milestones',
     'tasks','task_tags','subtasks','notes','ideas','remember_items','schedule_blocks',
-    'reminders','focus_sessions','user_settings'
+    'reminders','focus_sessions','routine_tasks','routine_completions','user_settings'
   ]
   loop
     begin

@@ -8,7 +8,8 @@ import { startReminderScheduler } from '../lib/notifications';
 
 export type Page =
   | 'home' | 'today' | 'tasks' | 'calendar' | 'weekly' | 'projects' | 'goals'
-  | 'notes' | 'ideas' | 'remember' | 'stats' | 'focus' | 'review' | 'search' | 'settings' | 'reminders';
+  | 'notes' | 'ideas' | 'remember' | 'stats' | 'focus' | 'review' | 'search' | 'settings' | 'reminders'
+  | 'productivity';
 
 export type ToastKind = 'info' | 'success' | 'error';
 

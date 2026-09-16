@@ -19,6 +19,7 @@ const NAV: { key: Page; label: string; icon: string }[] = [
   { key: 'ideas', label: 'Ideas', icon: 'bulb' },
   { key: 'remember', label: 'Remember', icon: 'bookmark' },
   { key: 'stats', label: 'Statistics', icon: 'chart' },
+  { key: 'productivity', label: 'Productivity', icon: 'check' },
   { key: 'reminders', label: 'Reminders', icon: 'bell' },
   { key: 'focus', label: 'Focus', icon: 'focus' },
   { key: 'review', label: 'Daily Review', icon: 'clock' },

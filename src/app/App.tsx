@@ -14,6 +14,7 @@ import { NotesPage } from './pages/NotesPage';
 import { IdeasPage } from './pages/IdeasPage';
 import { RememberPage } from './pages/RememberPage';
 import { StatsPage } from './pages/StatsPage';
+import { ProductivityPage } from './pages/ProductivityPage';
 import { FocusPage } from './pages/FocusPage';
 import { RemindersPage } from './pages/RemindersPage';
 import { ReviewPage } from './pages/ReviewPage';
@@ -59,6 +60,7 @@ function PageRouter() {
     case 'ideas': return <IdeasPage />;
     case 'remember': return <RememberPage />;
     case 'stats': return <StatsPage />;
+    case 'productivity': return <ProductivityPage />;
     case 'focus': return <FocusPage />;
     case 'reminders': return <RemindersPage />;
     case 'review': return <ReviewPage />;

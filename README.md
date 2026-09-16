@@ -29,7 +29,7 @@ The same account works on Windows and Android: create a task on one, complete it
 | **Recurring tasks** | Daily / weekdays / weekly (pick days) / monthly (day-of-month) / yearly / custom. Completions are tracked per-occurrence so finishing today keeps future dates intact |
 | **Projects** | Statuses (Idea→Planning→Active→On Hold→Completed→Archived), priority, dates, color, milestones with due dates, linked tasks, visual progress |
 | **Goals** | Long-term / yearly / monthly / weekly horizons, deadline, milestones, related tasks, progress |
-| **Ideas & Future** | Someday/maybe parking lot with its own statuses and effort estimates. **One button converts an idea into an active project.** **Instant capture:** snap a photo of what sparked the idea and record a voice note right in the app (camera + mic, auto-compressed, synced everywhere) |
+| **Ideas & Future** | Someday/maybe parking lot with its own statuses and effort estimates. **One button converts an idea into an active project.** **Instant capture:** live camera viewfinder (frame the shot, then shutter) + voice notes with pause/resume — auto-compressed, synced everywhere |
 | **Remember** | Permanent knowledge: principles, rules, checklists. Pin, favorite, categories, tags, search |
 | **Notes** | Folders, tags, pin, favorite, archive, search, links to task/project/goal |
 | **Weekly planner** | 7-day grid of time blocks (College 8–2, Gym 4–5:30…), colors, recurrence, optional task link — deliberately a different concept from tasks |
@@ -38,6 +38,7 @@ The same account works on Windows and Android: create a task on one, complete it
 | **Focus** | Pomodoro or custom timer with a task picker, progress ring, pause/resume, session logging |
 | **Reviews** | Daily review (completed/incomplete/overdue + one-tap reschedule) and weekly review (carried forward, projects/goals progress, next week) |
 | **Statistics** | Completed today/week/month, completion rate, 14-day chart, best weekdays, by category & priority, project progress, focus minutes — deliberately *not* a stressful score |
+| **Productivity** | Weekly routine: add tasks per weekday ("Morning workout every Thursday") or one-off custom dates, tick them done each day, week strip with per-day status dots, all-done streak, progress ring — syncs across devices |
 | **Search** | One search across tasks, projects, goals, notes, ideas, Remember items, schedule blocks and reminders |
 | **Offline & sync** | Full offline support; outbox queues changes; realtime updates between devices; last-write-wins with local-pending protection; pending-count badge and manual "Sync now" |
 | **Backup** | Export everything as JSON, tasks as CSV, import JSON backups (merge, newest-wins) |

@@ -4,8 +4,8 @@
 // converge all devices. Last-write-wins per row via updated_at.
 import type {
   Category, EntityKind, FocusSession, Goal, GoalMilestone, Idea, Note,
-  Profile, Project, ProjectMilestone, RememberItem, Reminder, ScheduleBlock,
-  Subtask, Tag, Task, TaskStatus, Priority,
+  Profile, Project, ProjectMilestone, RememberItem, Reminder, RoutineTask,
+  RoutineCompletion, ScheduleBlock, Subtask, Tag, Task, TaskStatus, Priority,
 } from './types';
 import { idbGet, idbSet, cacheKey, idbWipeUser } from './idb';
 import { getClient } from './supabase';
@@ -35,6 +35,8 @@ export interface DBState {
   schedule_blocks: ScheduleBlock[];
   reminders: Reminder[];
   focus_sessions: FocusSession[];
+  routine_tasks: RoutineTask[];
+  routine_completions: RoutineCompletion[];
   user_settings: { user_id: string; data: Record<string, any> } | null;
 }
 
@@ -42,7 +44,8 @@ const emptyState = (): DBState => ({
   profiles: [], categories: [], tags: [], projects: [], project_milestones: [],
   goals: [], goal_milestones: [], tasks: [], subtasks: [], task_tags: [],
   notes: [], ideas: [], remember_items: [], schedule_blocks: [],
-  reminders: [], focus_sessions: [], user_settings: null,
+  reminders: [], focus_sessions: [], routine_tasks: [], routine_completions: [],
+  user_settings: null,
 });
 
 let state: DBState = emptyState();
@@ -84,6 +87,7 @@ export async function initStore(userId: string): Promise<void> {
     'profiles', 'categories', 'tags', 'projects', 'project_milestones', 'goals',
     'goal_milestones', 'tasks', 'subtasks', 'task_tags', 'notes', 'ideas',
     'remember_items', 'schedule_blocks', 'reminders', 'focus_sessions',
+    'routine_tasks', 'routine_completions',
   ];
   for (const t of tables) {
     const cached = await idbGet<any[]>(cacheKey(userId, t));
@@ -141,7 +145,8 @@ function subscribeRealtime() {
   const tables: Table[] = [
     'profiles', 'categories', 'tags', 'projects', 'project_milestones', 'goals',
     'goal_milestones', 'tasks', 'task_tags', 'subtasks', 'notes', 'ideas',
-    'remember_items', 'schedule_blocks', 'reminders', 'focus_sessions', 'user_settings',
+    'remember_items', 'schedule_blocks', 'reminders', 'focus_sessions',
+    'routine_tasks', 'routine_completions', 'user_settings',
   ];
   realtimeChannel = sb.channel('lifeos-sync');
   for (const t of tables) {
@@ -222,6 +227,7 @@ async function persistAll() {
     'profiles', 'categories', 'tags', 'projects', 'project_milestones', 'goals',
     'goal_milestones', 'tasks', 'subtasks', 'task_tags', 'notes', 'ideas',
     'remember_items', 'schedule_blocks', 'reminders', 'focus_sessions',
+    'routine_tasks', 'routine_completions',
   ];
   for (const t of tables) await persistTable(t);
   await persistTable('user_settings');
@@ -241,6 +247,7 @@ export async function pull(): Promise<void> {
       'categories', 'tags', 'projects', 'project_milestones', 'goals',
       'goal_milestones', 'tasks', 'subtasks', 'task_tags', 'notes', 'ideas',
       'remember_items', 'schedule_blocks', 'reminders', 'focus_sessions',
+    'routine_tasks', 'routine_completions',
     ];
     for (const t of rowTables) {
       const { data, error } = await sb.from(t).select('*').eq('user_id', uid);
@@ -1225,6 +1232,57 @@ async function seedDemoData(): Promise<void> {
   await createReminder({ title: 'Library book return', due_at: new Date(Date.now() + 26 * 3600e3).toISOString(), priority: 'low' });
 
   await createFocusSession({ task_id: doneTask.id, mode: 'pomodoro', duration_minutes: 25, completed_minutes: 25, completed: true, started_at: new Date(Date.now() - 3600e3).toISOString() });
+}
+
+// ------------------------------------------------------------------
+// Routine tasks (Productivity tab)
+// ------------------------------------------------------------------
+export async function createRoutineTask(input: Partial<RoutineTask>): Promise<RoutineTask> {
+  if (!uid) throw new Error('Not signed in');
+  const now = new Date().toISOString();
+  const r: RoutineTask = {
+    id: crypto.randomUUID(), user_id: uid,
+    title: input.title?.trim() || 'Untitled routine',
+    weekday: input.weekday ?? null,
+    extra_date: input.extra_date ?? null,
+    time_of_day: input.time_of_day ?? null,
+    color: input.color ?? '#6366f1',
+    archived: false,
+    sort_order: state.routine_tasks.length,
+    created_at: now, updated_at: now,
+  };
+  await insertRow('routine_tasks', r as any);
+  return r;
+}
+
+export async function updateRoutineTask(id: string, patch: Partial<RoutineTask>): Promise<void> {
+  await updateRow('routine_tasks', id, patch as Record<string, any>);
+}
+
+export async function deleteRoutineTask(id: string): Promise<void> {
+  await deleteRow('routine_tasks', id);
+}
+
+/** Tick (or untick) a routine task for a given local date. */
+export async function toggleRoutineCompletion(taskId: string, date: string): Promise<void> {
+  if (!uid) throw new Error('Not signed in');
+  const existing = state.routine_completions.find((c) => c.task_id === taskId && c.done_date === date);
+  if (existing) {
+    // optimistic local removal
+    state.routine_completions = state.routine_completions.filter((c) => c.id !== existing.id);
+    emit();
+    void persistTable('routine_completions');
+    await enqueue({ kind: 'delete', table: 'routine_completions', ref: existing.id });
+  } else {
+    const c: RoutineCompletion = {
+      id: crypto.randomUUID(), user_id: uid, task_id: taskId, done_date: date,
+      created_at: new Date().toISOString(),
+    };
+    state.routine_completions.push(c);
+    emit();
+    void persistTable('routine_completions');
+    await enqueue({ kind: 'insert', table: 'routine_completions', row: c as any, ref: c.id });
+  }
 }
 
 function addDaysStr(s: string, n: number): string {

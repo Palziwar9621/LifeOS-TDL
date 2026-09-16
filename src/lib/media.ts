@@ -70,7 +70,105 @@ async function pickCamera(): Promise<MediaStream> {
   }
 }
 
-/** Open the camera, snap one photo, stop the stream. Resolves after capture. */
+// ------------------------------------------------------------------
+// Live camera preview (viewfinder) — user frames the shot, then taps shutter.
+// ------------------------------------------------------------------
+
+export interface CameraPreview {
+  /** Live stream — attach to a <video> element (playsInline, muted). */
+  stream: MediaStream;
+  /** Snap the current frame; resolves with the compressed photo. */
+  snap: () => Promise<CapturedPhoto>;
+  /** Switch between front/back cameras where the device supports it. */
+  flip: () => Promise<void>;
+  /** Stop the camera and release it. */
+  stop: () => void;
+  videoWidth: () => number;
+  videoHeight: () => number;
+}
+
+let activePreview: CameraPreview | null = null;
+let facing: 'environment' | 'user' = 'environment';
+
+export async function openCameraPreview(): Promise<CameraPreview> {
+  if (activePreview) activePreview.stop();
+  let stream: MediaStream;
+  try {
+    const attempts: MediaStreamConstraints[] = [
+      { video: { facingMode: { ideal: facing }, width: { ideal: 1920 }, height: { ideal: 1920 } } },
+      { video: { facingMode: facing } },
+      { video: true },
+    ];
+    let opened: MediaStream | null = null;
+    for (const c of attempts) {
+      try { opened = await navigator.mediaDevices.getUserMedia(c); break; } catch { /* next */ }
+    }
+    if (!opened) throw new Error('No camera available');
+    stream = opened;
+  } catch (e: any) {
+    if (e?.name === 'NotAllowedError') throw new Error('Camera permission denied. Allow camera access in your browser/app settings.');
+    if (e?.name === 'NotFoundError') throw new Error('No camera found on this device.');
+    throw new Error('Could not start the camera. ' + (e?.message ?? ''));
+  }
+
+  const snap = async (): Promise<CapturedPhoto> => {
+    const video = videoEl;
+    if (!video || video.videoWidth === 0) throw new Error('Camera is still warming up — try in a second.');
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d')!;
+    // Mirror the frame when using the front camera so it matches the preview.
+    if (facing === 'user') { ctx.translate(canvas.width, 0); ctx.scale(-1, 1); }
+    ctx.drawImage(video, 0, 0);
+    const blob = await new Promise<Blob>((res, rej) =>
+      canvas.toBlob((b) => (b ? res(b) : rej(new Error('Capture failed'))), 'image/jpeg', 0.9));
+    const bmp = await createImageBitmap(blob);
+    return bitmapToJpeg(bmp, 140);
+  };
+
+  const flip = async () => {
+    facing = facing === 'environment' ? 'user' : 'environment';
+    stream.getTracks().forEach((t) => t.stop());
+    activePreview = null;
+    const next = await openCameraPreview();
+    activePreview = next;
+    // Hand the new stream back for the caller to attach.
+    onSwap?.(next.stream);
+  };
+
+  let videoEl: HTMLVideoElement | null = null;
+  let onSwap: ((s: MediaStream) => void) | null = null;
+
+  const preview: CameraPreview = {
+    stream,
+    snap,
+    flip,
+    stop: () => {
+      stream.getTracks().forEach((t) => t.stop());
+      if (activePreview === preview) activePreview = null;
+    },
+    videoWidth: () => videoEl?.videoWidth ?? 0,
+    videoHeight: () => videoEl?.videoHeight ?? 0,
+  };
+
+  // Caller registers its <video> element via the extended API below.
+  (preview as any).attach = (el: HTMLVideoElement) => {
+    videoEl = el;
+    el.srcObject = stream;
+    el.playsInline = true;
+    el.muted = true;
+    void el.play().catch(() => undefined);
+  };
+  (preview as any).onStreamSwap = (cb: (s: MediaStream) => void) => { onSwap = cb; };
+
+  activePreview = preview;
+  return preview;
+}
+
+// ------------------------------------------------------------------
+// One-shot capture (kept for quick paths that don't need a preview)
+// ------------------------------------------------------------------
 export function capturePhoto(): Promise<CapturedPhoto> {
   return new Promise((resolve, reject) => {
     let stream: MediaStream | null = null;
@@ -162,6 +260,11 @@ export interface VoiceSession {
   cancel: () => void;
   /** Live elapsed seconds — call this on a timer to show a counter. */
   elapsedSecs: () => number;
+  /** Pause capture. Audio already recorded is kept; timer freezes. */
+  pause: () => void;
+  /** Resume from a pause — appends to the same recording. */
+  resume: () => void;
+  isPaused: () => boolean;
 }
 
 const MAX_VOICE_SECS = 120; // keep the row small enough to sync briskly
@@ -179,6 +282,9 @@ export async function startVoiceRecording(): Promise<VoiceSession> {
   const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
   const chunks: Blob[] = [];
   const startedAt = Date.now();
+  let pausedMs = 0;          // accumulated time spent paused
+  let pauseStartedAt: number | null = null;
+  let paused = false;
   rec.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
   rec.start(500); // gather in 0.5s chunks
 
@@ -186,8 +292,30 @@ export async function startVoiceRecording(): Promise<VoiceSession> {
     rec.onstop = () => resolve();
   });
 
+  /** Recorded seconds excluding paused time. */
+  const activeSecs = () =>
+    Math.max(0, Math.round(((Date.now() - startedAt) - pausedMs - (pauseStartedAt ? Date.now() - pauseStartedAt : 0)) / 1000));
+
+  const pause = () => {
+    if (paused || rec.state !== 'recording') return;
+    rec.pause();
+    paused = true;
+    pauseStartedAt = Date.now();
+  };
+
+  const resume = () => {
+    if (!paused || rec.state !== 'paused') return;
+    if (pauseStartedAt) pausedMs += Date.now() - pauseStartedAt;
+    pauseStartedAt = null;
+    paused = false;
+    rec.resume();
+  };
+
+  const isPaused = () => paused;
+
   const stop = async (): Promise<VoiceRecording> => {
-    const durationSecs = Math.min(MAX_VOICE_SECS, Math.round((Date.now() - startedAt) / 1000));
+    if (pauseStartedAt) pausedMs += Date.now() - pauseStartedAt;
+    const durationSecs = Math.min(MAX_VOICE_SECS, activeSecs());
     if (rec.state !== 'inactive') {
       rec.stop();
       await stopped;
@@ -210,8 +338,10 @@ export async function startVoiceRecording(): Promise<VoiceSession> {
   };
 
   // Hard cap: auto-stop at 2 minutes so nothing runs away silently.
-  const autoStop = setTimeout(() => { if (rec.state !== 'inactive') rec.stop(); }, MAX_VOICE_SECS * 1000);
+  const autoStop = setTimeout(() => {
+    if (rec.state !== 'inactive') { try { rec.pause(); } catch { /* already stopped */ } }
+  }, MAX_VOICE_SECS * 1000);
   rec.addEventListener('stop', () => clearTimeout(autoStop), { once: true });
 
-  return { stop, cancel, elapsedSecs: () => Math.floor((Date.now() - startedAt) / 1000) };
+  return { stop, cancel, elapsedSecs: activeSecs, pause, resume, isPaused };
 }

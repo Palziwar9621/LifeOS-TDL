@@ -238,6 +238,30 @@ export interface Tag {
   updated_at: string;
 }
 
+export interface RoutineTask {
+  id: string;
+  user_id: string;
+  title: string;
+  /** 0=Sunday..6=Saturday; null when this is a custom extra-date task. */
+  weekday: number | null;
+  /** Extra one-off date (custom day task) — repeats every week on that date? No: one specific date. */
+  extra_date: string | null;
+  time_of_day: string | null;   // HH:mm:ss
+  color: string;
+  archived: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RoutineCompletion {
+  id: string;
+  user_id: string;
+  task_id: string;
+  done_date: string;            // yyyy-MM-dd
+  created_at: string;
+}
+
 export interface FocusSession {
   id: string;
   user_id: string;
@@ -262,7 +286,8 @@ export interface Profile {
 export type EntityKind =
   | 'tasks' | 'subtasks' | 'projects' | 'project_milestones' | 'goals' | 'goal_milestones'
   | 'notes' | 'ideas' | 'remember_items' | 'schedule_blocks' | 'reminders'
-  | 'categories' | 'tags' | 'task_tags' | 'focus_sessions';
+  | 'categories' | 'tags' | 'task_tags' | 'focus_sessions'
+  | 'routine_tasks' | 'routine_completions';
 
 export const PRIORITY_ORDER: Record<Priority, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
 
