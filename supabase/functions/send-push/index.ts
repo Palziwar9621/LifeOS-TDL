@@ -270,7 +270,8 @@ async function handle(req: Request): Promise<Response> {
   }
 
   // Caller: service-role (cron) or a signed-in user (test push).
-  const token = auth.replace('Bearer ', '');
+  const authHeader = req.headers.get('Authorization') ?? '';
+  const token = authHeader.replace('Bearer ', '');
   const isService = token === adminKey;
   if (!isService) {
     // Verify the user's JWT via the Auth server REST endpoint.
