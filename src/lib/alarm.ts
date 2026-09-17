@@ -1,7 +1,10 @@
-// LifeOS — alarm sound engine.
-// Synthesized with WebAudio (no asset downloads): each "sound" is a short
-// looping pattern. Alarms repeat until the user dismisses them or a cap
-// (3 minutes) is reached — never annoying forever, never silent by accident.
+// LifeOS — alarm sound engine. Synthesized with WebAudio (no asset
+// downloads): each "sound" is a short looping pattern. Alarms ring until
+// the user turns them off — and once turned off, a shared dismissal record
+// keeps them silent on every device until the next scheduled occurrence.
+
+import { isKeyDismissed, dismissKey, syncDismissals } from './dismissals';
+export { isKeyDismissed };
 
 export type AlarmSoundId =
   | 'chime' | 'birdsong' | 'pulse' | 'marimba' | 'sunrise' | 'digital' | 'none';
@@ -26,7 +29,7 @@ let ctx: AudioContext | null = null;
 let loopTimer: ReturnType<typeof setTimeout> | null = null;
 let activeStop: (() => void) | null = null;
 let currentSound: AlarmSoundId = 'chime';
-let dismissed = new Set<string>();
+const dismissed = new Set<string>();
 
 export function setDefaultAlarmSound(id: AlarmSoundId) {
   if (ALARM_SOUNDS.some((s) => s.id === id)) currentSound = id;
@@ -127,7 +130,6 @@ function playPattern(id: AlarmSoundId) {
 
 export function isAlarmActive(): boolean { return activeStop !== null; }
 export function wasDismissed(key: string): boolean { return dismissed.has(key); }
-
 // ---- alarm state visible to the UI (in-app overlay) -----------------------
 export interface AlarmMeta { key: string; title: string; body: string; sound: AlarmSoundId }
 let current: AlarmMeta | null = null;
@@ -144,12 +146,13 @@ let snoozeTimer: ReturnType<typeof setTimeout> | null = null;
 /**
  * Start an alarm loop for `key`. Rings continuously (sound + vibration)
  * until the user turns it off — no auto-stop. Shows in `getAlarmState()`.
+ * A key dismissed on ANY device (shared record) never rings here.
  */
 export function startAlarm(key: string, sound?: AlarmSoundId, meta?: { title?: string; body?: string }) {
   const id = sound ?? currentSound;
   if (id === 'none') return;
   stopAlarm();
-  if (dismissed.has(key)) return;
+  if (dismissed.has(key) || isKeyDismissed(key)) return;
   let stopped = false;
 
   current = { key, title: meta?.title ?? '⏰ Alarm', body: meta?.body ?? '', sound: id };
@@ -178,6 +181,17 @@ export function stopAlarm() {
   activeStop?.();
 }
 
+/** Stop ringing now AND record the dismissal on the shared cross-device store
+ * — "Turn off" means off everywhere, until the next scheduled occurrence. */
+export function turnOffAlarm() {
+  const key = current?.key;
+  stopAlarm();
+  if (key) {
+    dismissed.add(key);
+    dismissKey(key);
+  }
+}
+
 /** Stop ringing now, then ring the same alarm again after `minutes`. */
 export function snoozeAlarm(minutes = 10) {
   const meta = current ? { ...current } : null;
@@ -191,12 +205,17 @@ export function snoozeAlarm(minutes = 10) {
   }
 }
 
-/** Permanently dismiss this alarm key (won't ring again, e.g. after snooze). */
+/** Permanently dismiss this alarm key — locally AND on the shared record,
+ * so it never rings again on any device until its next occurrence. */
 export function dismissAlarm(key: string) {
   dismissed.add(key);
+  dismissKey(key); // persist cross-device (fire-and-forget)
   stopAlarm();
 }
-export function clearDismissed() { dismissed.clear(); }
+/** Pull the shared dismissal record into the local set (cross-device silencing). */
+export async function loadSharedDismissals() {
+  await syncDismissals();
+}
 
 /** Preview a sound once (settings / pickers). Safe during alarm. */
 export function previewAlarmSound(id: AlarmSoundId) {

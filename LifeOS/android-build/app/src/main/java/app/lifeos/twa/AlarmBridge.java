@@ -28,4 +28,11 @@ public class AlarmBridge {
         int count = keys.isEmpty() ? 0 : keys.split(",").length;
         return "{\"hasPayload\":" + (payload != null) + ",\"scheduled\":" + count + "}";
     }
+
+    /** Keys the user turned off on this device — web side adopts them into
+     * the shared record so the dismissal silences every other device too. */
+    @JavascriptInterface
+    public String dismissedKeys() {
+        return AlarmScheduler.dismissedKeys(ctx);
+    }
 }

@@ -1,7 +1,8 @@
 // LifeOS — web notifications + alarm scheduler
 import { dbState, snoozeReminder, updateReminder, completeTask, updateTask, getSettings } from './db';
 import { splitIso, todayStr, dateTimeFrom, parseDateStr } from './dates';
-import { startAlarm, wasDismissed, clearDismissed } from './alarm';
+import { startAlarm, wasDismissed, isKeyDismissed } from './alarm';
+import { syncDismissals } from './dismissals';
 import type { Reminder, Task, RoutineTask } from './types';
 
 type Timer = ReturnType<typeof setInterval>;
@@ -61,12 +62,15 @@ function taskReminderFireTime(t: Task): Date | null {
 /** Check every 30s for reminders/tasks that should fire now. */
 export function startReminderScheduler() {
   if (timer) return;
+  // Re-sync the shared dismissal record so alarms stopped on another device
+  // stay silent here too (throttled internally to every 5 min).
+  void syncDismissals();
   const check = () => {
     try {
       if (getSettings().notifications_enabled === false) return;
       const now = Date.now();
       const today = todayStr();
-      if (today !== lastDateKey) { lastDateKey = today; clearDismissed(); }
+      void syncDismissals(); // throttled; keeps cross-device silencing fresh
       const s = dbState();
       const defaultSound = (getSettings().data as any)?.alarm_sound as string | undefined;
 
@@ -74,7 +78,7 @@ export function startReminderScheduler() {
         if (r.done || r.deleted) continue;
         const fireAt = r.snoozed_until ? new Date(r.snoozed_until).getTime() : new Date(r.due_at).getTime();
         const key = `rem:${r.id}:${r.snoozed_until ?? r.due_at}`;
-        if (fireAt <= now && now - fireAt < 60000 * 60 * 12 && !notified.has(key)) {
+        if (fireAt <= now && now - fireAt < 60000 * 60 * 12 && !notified.has(key) && !isKeyDismissed(key)) {
           notified.add(key);
           show(
             '⏰ ' + (r.important ? '⭐ ' + r.title : r.title),
@@ -94,7 +98,7 @@ export function startReminderScheduler() {
         if (t.reminder_minutes == null) continue;
         const fireMs = fire.getTime();
         const key = `task:${t.id}:${t.due_date}:${t.due_time}`;
-        if (fireMs <= now && now - fireMs < 60000 * 60 * 12 && !notified.has(key)) {
+        if (fireMs <= now && now - fireMs < 60000 * 60 * 12 && !notified.has(key) && !isKeyDismissed(key)) {
           notified.add(key);
           show('⏰ Task due soon', t.title, t.id + ':' + t.due_date, () => taskClickHandler?.(t));
           if (!wasDismissed(key)) startAlarm(key, defaultSound as any, { title: t.title, body: 'Task due soon' });
@@ -112,7 +116,7 @@ export function startReminderScheduler() {
         const fireMs = parseDateStr(today).getTime() + ((h * 60 + (m ?? 0)) * 60000 - new Date().getTimezoneOffset() * -60000);
         const fireAt = new Date(today + 'T' + rt.time_of_day).getTime();
         const key = `routine:${rt.id}:${today}`;
-        if (fireAt <= now && now - fireAt < 60000 * 60 * 2 && !notified.has(key)) {
+        if (fireAt <= now && now - fireAt < 60000 * 60 * 2 && !notified.has(key) && !isKeyDismissed(key)) {
           notified.add(key);
           show('⏰ Routine time', rt.title, rt.id + ':' + today);
           if (!wasDismissed(key)) startAlarm(key, defaultSound as any, { title: rt.title, body: 'Routine time' });

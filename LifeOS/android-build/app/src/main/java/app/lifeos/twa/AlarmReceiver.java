@@ -31,6 +31,9 @@ public class AlarmReceiver extends BroadcastReceiver {
             AlarmSoundService.stop(ctx);
             NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
             if (nm != null) nm.cancel(intent.getIntExtra(EXTRA_NOTIF_ID, 0));
+            // Turned off = dead for this occurrence, even when the web app
+            // re-pushes the same alarm key on its next sync.
+            AlarmScheduler.markDismissed(ctx, intent.getStringExtra(EXTRA_KEY));
             return;
         }
         if (ACTION_SNOOZE.equals(action)) {
@@ -41,6 +44,7 @@ public class AlarmReceiver extends BroadcastReceiver {
             if (key != null) AlarmScheduler.snooze(ctx, key, 10);
             return;
         }
+
 
         String key = intent.getStringExtra(EXTRA_KEY);
         if (key == null) return;

@@ -294,9 +294,17 @@ async function handle(req: Request): Promise<Response> {
   } else {
     items = await dueItems(supabase);
     if (items.length) {
-      const { data: fired } = await supabase.from('alarm_fires').select('key').in('key', items.map((i) => i.key));
-      const firedSet = new Set((fired ?? []).map((f: any) => f.key));
-      items = items.filter((i) => !firedSet.has(i.key));
+      // Skip anything already pushed (alarm_fires) OR turned off by the user
+      // on any device (alarm_dismissals) — a stopped alarm stays stopped.
+      const [{ data: fired }, { data: dismissed }] = await Promise.all([
+        supabase.from('alarm_fires').select('key').in('key', items.map((i) => i.key)),
+        supabase.from('alarm_dismissals').select('key').in('key', items.map((i) => i.key)),
+      ]);
+      const dead = new Set([
+        ...((fired ?? []) as any[]).map((f) => f.key),
+        ...((dismissed ?? []) as any[]).map((d) => d.key),
+      ]);
+      items = items.filter((i) => !dead.has(i.key));
     }
     if (items.length) {
       const { data } = await supabase.from('push_subscriptions')

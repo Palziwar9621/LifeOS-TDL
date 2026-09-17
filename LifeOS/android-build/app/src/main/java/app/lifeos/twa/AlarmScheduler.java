@@ -22,6 +22,7 @@ public class AlarmScheduler {
     private static final String PREFS = "lifeos_alarms";
     private static final String KEY_PAYLOAD = "payload";
     private static final String KEY_SCHEDULED = "scheduled_keys";
+    private static final String KEY_DISMISSED = "dismissed_keys";
 
     /**
      * Entry point from the JS bridge: payload = {sound, alarms:[{key,at,title,body}]}.
@@ -58,6 +59,9 @@ public class AlarmScheduler {
                 String key = a.optString("key", "");
                 long at = a.optLong("at", 0);
                 if (key.isEmpty() || at <= System.currentTimeMillis()) continue;
+                // The user turned this alarm off on the device — it stays off
+                // for this occurrence even if the web pushes the same key again.
+                if (isDismissed(prefs, key)) continue;
 
                 prefs.edit()
                         .putString("alarm:" + key + ":title", a.optString("title", "LifeOS alarm"))
@@ -105,6 +109,43 @@ public class AlarmScheduler {
         SharedPreferences prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         String json = prefs.getString(KEY_PAYLOAD, null);
         if (json != null) scheduleFromJson(ctx, json);
+    }
+
+    // ---- Turned-off tracking: a stopped alarm never rings again for this
+    // ---- occurrence, even when the web re-pushes the same key every minute.
+
+    /** Called by AlarmReceiver's "Turn off" action. */
+    public static void markDismissed(Context ctx, String key) {
+        if (key == null || key.isEmpty()) return;
+        SharedPreferences prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        String cur = prefs.getString(KEY_DISMISSED, "");
+        for (String k : cur.split(",")) if (k.equals(key)) return; // already there
+        String next = cur.isEmpty() ? key : cur + "," + key;
+        // Cap the list — keys embed their occurrence time, old ones never match.
+        String[] parts = next.split(",");
+        if (parts.length > 100) {
+            StringBuilder sb = new StringBuilder();
+            for (int i = parts.length - 100; i < parts.length; i++) {
+                if (sb.length() > 0) sb.append(',');
+                sb.append(parts[i]);
+            }
+            next = sb.toString();
+        }
+        prefs.edit().putString(KEY_DISMISSED, next).apply();
+    }
+
+    private static boolean isDismissed(SharedPreferences prefs, String key) {
+        for (String k : prefs.getString(KEY_DISMISSED, "").split(",")) {
+            if (k.equals(key)) return true;
+        }
+        return false;
+    }
+
+    /** Keys turned off on this device — the web side adopts these so the
+     * dismissal propagates to every other device via the shared record. */
+    public static String dismissedKeys(Context ctx) {
+        return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_DISMISSED, "");
     }
 
     private static PendingIntent pending(Context ctx, String key) {

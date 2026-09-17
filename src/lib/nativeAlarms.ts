@@ -14,6 +14,7 @@
 
 import { dbState, getSettings } from './db';
 import { todayStr, parseDateStr } from './dates';
+import { isKeyDismissed, dismissKey, syncDismissals } from './dismissals';
 import type { Reminder, Task, RoutineTask } from './types';
 
 export interface NativeAlarm {
@@ -37,7 +38,8 @@ export function computeUpcomingAlarms(): NativeAlarm[] {
   const defaultSound = alarmSound();
 
   const add = (key: string, at: number, title: string, body: string) => {
-    if (at > now && at <= horizon) out.push({ key, at, title, body: body + (defaultSound !== 'none' ? '' : ' (silent)') });
+    if (at > now && at <= horizon && !isKeyDismissed(key))
+      out.push({ key, at, title, body: body + (defaultSound !== 'none' ? '' : ' (silent)') });
   };
 
   // Reminders
@@ -108,8 +110,17 @@ let lastPayload = '';
 
 /** Push current upcoming alarms to the native layer (no-op in browsers). */
 export function syncNativeAlarms(): void {
+  const n = (typeof window !== 'undefined') ? (window as any).LifeOSNative : null;
   const fn = bridgeFn();
   if (!fn) { lastSyncStatus = null; return; }
+
+  // Adopt alarms the user turned off natively on this device (Android
+  // notification action) into the shared record — silences every device.
+  try {
+    const keys: string = n?.dismissedKeys?.() ?? '';
+    for (const k of keys.split(',')) if (k && !isKeyDismissed(k)) dismissKey(k);
+  } catch { /* bridge without the new method — fine */ }
+
   const alarms = computeUpcomingAlarms();
   const payload = JSON.stringify({ sound: alarmSound(), alarms });
   if (payload === lastPayload) return;
@@ -127,9 +138,10 @@ let syncTimer: ReturnType<typeof setInterval> | null = null;
 /** Called once at boot; re-syncs periodically and on data changes. */
 export function startNativeAlarmSync(): void {
   if (syncTimer) return;
-  // Initial kick after the store has loaded.
-  setTimeout(syncNativeAlarms, 5000);
+  // Load the shared dismissal record first so alarms stopped on another
+  // device are filtered out of the very first push to the native layer.
+  void syncDismissals().then(() => setTimeout(syncNativeAlarms, 5000));
   // Data changes bump the store version; re-check every minute regardless.
-  syncTimer = setInterval(syncNativeAlarms, 60000);
+  syncTimer = setInterval(() => { void syncDismissals().then(syncNativeAlarms); }, 60000);
   window.addEventListener('focus', syncNativeAlarms);
 }

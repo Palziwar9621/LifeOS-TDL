@@ -2,7 +2,7 @@
 // Shows while an alarm is ringing: big title, pulsing icon, and the two
 // controls that matter at 6 am — "Turn off" and "Snooze 10 min".
 import React, { useEffect, useState } from 'react';
-import { getAlarmState, subscribeAlarm, stopAlarm, snoozeAlarm } from '../lib/alarm';
+import { getAlarmState, subscribeAlarm, turnOffAlarm, snoozeAlarm } from '../lib/alarm';
 
 export function AlarmOverlay() {
   const [alarm, setAlarm] = useState(getAlarmState());
@@ -27,7 +27,7 @@ export function AlarmOverlay() {
         <div className="mt-6 grid gap-2">
           <button
             className="btn-primary !py-3 text-base"
-            onClick={() => stopAlarm()}
+            onClick={() => turnOffAlarm()}
             autoFocus
           >
             ⏹ Turn off
