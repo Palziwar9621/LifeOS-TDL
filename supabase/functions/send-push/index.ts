@@ -2,15 +2,14 @@
 // Runs on a pg_cron schedule (every minute) with the service-role key, finds
 // reminders / task alerts / routine alarms that are due right now, and sends
 // a Web Push to every stored subscription via the Web Push protocol.
-// Also accepts { test: true, user_id } for a manual test push from Settings.
+// Also accepts { test: true } for a manual test push from Settings.
+//
+// Self-contained Web Push implementation (RFC 8291 + RFC 8292 VAPID) using
+// Deno's WebCrypto — no external push library needed.
 //
 // Required secrets (supabase secrets set):
 //   VAPID_PUBLIC_KEY    — base64url public key (same as VITE_VAPID_PUBLIC_KEY)
 //   VAPID_PRIVATE_KEY   — base64url private key
-// (SERVICE_ROLE key arrives automatically in the Authorization header when
-//  invoked with verify_jwt; cron sends it explicitly.)
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { webpush } from 'https://esm.sh/webpush@1';
 
 const enc = new TextEncoder();
 
@@ -23,12 +22,154 @@ function b64urlToBytes(s: string): Uint8Array {
   return out;
 }
 
-interface SubRow {
-  user_id: string;
-  endpoint: string;
-  p256dh: string;
-  auth: string;
+function b64urlEncode(bytes: Uint8Array): string {
+  let s = '';
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
+
+// ---------- RFC 8291 message encryption (aes128gcm) ----------
+
+async function ecdhSharedSecret(priv: CryptoKey, pub: CryptoKey): Promise<Uint8Array> {
+  return new Uint8Array(await crypto.subtle.deriveBits(
+    { name: 'ECDH', public: pub }, priv, 256,
+  ));
+}
+
+async function hkdf(salt: Uint8Array, ikm: Uint8Array, info: Uint8Array, len: number): Promise<Uint8Array> {
+  const key = await crypto.subtle.importKey('raw', ikm as any, 'HKDF', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'HKDF', hash: 'SHA-256', salt: salt as any, info: info as any }, key, len * 8,
+  );
+  return new Uint8Array(bits);
+}
+
+/** Encrypts payload per RFC 8291 aes128gcm and returns the request body. */
+async function encryptPayload(payload: string, p256dhB64: string, authB64: string) {
+  const uaPublic = await crypto.subtle.importKey(
+    'raw', b64urlToBytes(p256dhB64) as any,
+    { name: 'ECDH', namedCurve: 'P-256' }, false, [],
+  );
+  // Ephemeral server key pair
+  const serverKeys = await crypto.subtle.generateKey(
+    { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits'],
+  ) as CryptoKeyPair;
+
+  const ecdhSecret = await ecdhSharedSecret(serverKeys.privateKey, uaPublic);
+  const authSecret = b64urlToBytes(authB64);
+
+  // RFC 8291 section 4.2: ikm = HKDF(authSecret, ecdhSecret, "WebPush: info\x00" | uaPub | asPub, 32)
+  const uaPubRaw = new Uint8Array(await crypto.subtle.exportKey('raw', uaPublic));
+  const asPubRaw = new Uint8Array(await crypto.subtle.exportKey('raw', serverKeys.publicKey));
+  const info = new Uint8Array(19 + uaPubRaw.length + asPubRaw.length);
+  info.set(enc.encode('WebPush: info\x00'), 0);
+  info.set(uaPubRaw, 19);
+  info.set(asPubRaw, 19 + uaPubRaw.length);
+  const ikm = await hkdf(authSecret, ecdhSecret, info, 32);
+
+  // Content-encryption key + nonce: salt = random 16 bytes
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const cek = await hkdf(salt, ikm, enc.encode('Content-Encoding: aes128gcm\x00'), 16);
+  const nonce = await hkdf(salt, ikm, enc.encode('Content-Encoding: nonce\x00'), 12);
+
+  // Payload: plaintext | delimiter(0x02) | padding Zeros
+  const plaintext = enc.encode(payload);
+  const padded = new Uint8Array(plaintext.length + 2);
+  padded.set(plaintext, 0);
+  padded[plaintext.length] = 2; // delimiter
+  // last byte stays 0 (padding length byte at end)
+
+  const key = await crypto.subtle.importKey('raw', cek as any, 'AES-GCM', false, ['encrypt']);
+  const ciphertext = new Uint8Array(await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: nonce as any, additionalData: enc.encode('') as any, tagLength: 128 },
+    key, padded,
+  ));
+
+  // aes128gcm header: salt(16) | rs(4, big-endian, 4096) | idlen(1) | keyid(asPubRaw)
+  const rs = 4096;
+  const header = new Uint8Array(16 + 4 + 1 + asPubRaw.length);
+  header.set(salt, 0);
+  new DataView(header.buffer).setUint32(16, rs);
+  header[20] = asPubRaw.length;
+  header.set(asPubRaw, 21);
+
+  const body = new Uint8Array(header.length + ciphertext.length);
+  body.set(header, 0);
+  body.set(ciphertext, header.length);
+  return body;
+}
+
+// ---------- RFC 8292 VAPID authorization header ----------
+
+async function vapidAuthorizationHeader(endpoint: string, publicKeyB64: string, privateKeyB64: string): Promise<string> {
+  const url = new URL(endpoint);
+  const audience = `${url.protocol}//${url.host}`;
+  const expiry = Math.floor(Date.now() / 1000) + 12 * 3600;
+
+  const jwtPayload = b64urlEncode(enc.encode(JSON.stringify({
+    aud: audience,
+    exp: expiry,
+    sub: 'mailto:alarms@lifeos.app',
+  })));
+  const jwtHeader = b64urlEncode(enc.encode(JSON.stringify({ typ: 'JWT', alg: 'ES256' })));
+  const unsigned = `${jwtHeader}.${jwtPayload}`;
+
+  // Import the private key (raw 32 bytes) into JWK for ES256 signing.
+  const rawPriv = b64urlToBytes(privateKeyB64);
+  const jwk = {
+    kty: 'EC', crv: 'P-256', d: b64urlEncode(rawPriv),
+    x: '', y: '',
+  };
+  // Derive public point from the public key param for the JWK (x,y).
+  const pubBytes = b64urlToBytes(publicKeyB64);
+  // Uncompressed point: 0x04 | X(32) | Y(32)
+  jwk.x = b64urlEncode(pubBytes.slice(1, 33));
+  jwk.y = b64urlEncode(pubBytes.slice(33, 65));
+
+  const key = await crypto.subtle.importKey('jwk', jwk as any,
+    { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+  const sig = new Uint8Array(await crypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' }, key, enc.encode(unsigned) as any,
+  ));
+  // Convert DER signature to raw r|s (64 bytes) as required by RFC 8292.
+  const rs = derToRaw(sig);
+  return `vapid t=${unsigned}.${b64urlEncode(rs)}, k=${publicKeyB64}`;
+}
+
+/** Converts ASN.1 DER ECDSA signature to 64-byte raw r||s. */
+function derToRaw(der: Uint8Array): Uint8Array {
+  let rStart = 4, rLen = der[3];
+  if (rLen > 32) { rStart += 1; rLen -= 1; }
+  const r = der.slice(rStart, rStart + rLen);
+  let sStart = rStart + rLen + 2, sLen = der[rStart + rLen + 1];
+  if (sLen > 32) { sStart += 1; sLen -= 1; }
+  const s = der.slice(sStart, sStart + sLen);
+  const out = new Uint8Array(64);
+  out.set(r, 32 - r.length);
+  out.set(s, 64 - s.length);
+  return out;
+}
+
+// ---------- Web Push request ----------
+
+async function sendPush(sub: { endpoint: string; p256dh: string; auth: string }, payload: string, vapidPublic: string, vapidPrivate: string): Promise<{ ok: boolean; status?: number }> {
+  const body = await encryptPayload(payload, sub.p256dh, sub.auth);
+  const auth = await vapidAuthorizationHeader(sub.endpoint, vapidPublic, vapidPrivate);
+  const res = await fetch(sub.endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Encoding': 'aes128gcm',
+      'Content-Type': 'application/octet-stream',
+      Authorization: auth,
+      TTL: '300',
+      Urgency: 'high',
+    },
+    body: body as any,
+  });
+  return { ok: res.ok || res.status === 201, status: res.status };
+}
+
+// ---------- Due-item discovery ----------
 
 interface DueItem {
   key: string;
@@ -38,20 +179,19 @@ interface DueItem {
 }
 
 async function dueItems(supabase: any): Promise<DueItem[]> {
-  const now = new Date();
-  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'UTC' });
+  const now = Date.now();
+  const today = new Date().toISOString().slice(0, 10);
   const items: DueItem[] = [];
-  const horizon = new Date(now.getTime() + 60_000); // fire within the next minute
-  const backstop = new Date(now.getTime() - 12 * 3600_000); // catch late-but-recent
+  const horizon = now + 60_000;
+  const backstop = now - 12 * 3600_000;
 
-  // Reminders (incl. snoozed)
   const { data: rems } = await supabase
     .from('reminders')
     .select('id, user_id, title, notes, due_at, snoozed_until, done, deleted')
     .eq('done', false).eq('deleted', false);
   for (const r of rems ?? []) {
     const fireAt = new Date(r.snoozed_until ?? r.due_at).getTime();
-    if (fireAt <= horizon.getTime() && fireAt > backstop.getTime()) {
+    if (fireAt <= horizon && fireAt > backstop) {
       items.push({
         key: `rem:${r.id}:${r.snoozed_until ?? r.due_at}`,
         user_id: r.user_id,
@@ -61,7 +201,6 @@ async function dueItems(supabase: any): Promise<DueItem[]> {
     }
   }
 
-  // Tasks with reminder lead time
   const { data: tasks } = await supabase
     .from('tasks')
     .select('id, user_id, title, due_date, due_time, reminder_minutes, status, deleted, archived')
@@ -71,17 +210,11 @@ async function dueItems(supabase: any): Promise<DueItem[]> {
     if (!t.due_date) continue;
     const base = new Date(`${t.due_date}T${(t.due_time ?? '09:00').slice(0, 8)}`);
     const fireAt = base.getTime() - (t.reminder_minutes ?? 0) * 60000;
-    if (fireAt <= horizon.getTime() && fireAt > backstop.getTime()) {
-      items.push({
-        key: `task:${t.id}:${t.due_date}:${t.due_time}`,
-        user_id: t.user_id,
-        title: '⏰ Task due soon',
-        body: t.title,
-      });
+    if (fireAt <= horizon && fireAt > backstop) {
+      items.push({ key: `task:${t.id}:${t.due_date}:${t.due_time}`, user_id: t.user_id, title: '⏰ Task due soon', body: t.title });
     }
   }
 
-  // Routine tasks with a time of day
   const wd = new Date(`${today}T00:00:00`).getUTCDay();
   const { data: routines } = await supabase
     .from('routine_tasks')
@@ -95,35 +228,24 @@ async function dueItems(supabase: any): Promise<DueItem[]> {
   const doneSet = new Set((comps ?? []).map((c: any) => c.task_id));
   for (const rt of routines ?? []) {
     const days: number[] = rt.days?.length ? rt.days : rt.weekday != null ? [rt.weekday] : [];
-    const matches = days.includes(wd) || rt.extra_date === today;
-    if (!matches || doneSet.has(rt.id)) continue;
+    if ((!days.includes(wd) && rt.extra_date !== today) || doneSet.has(rt.id)) continue;
     const fireAt = new Date(`${today}T${rt.time_of_day.slice(0, 8)}`).getTime();
-    // routines: only fire within ±2 min of the scheduled time
-    if (fireAt <= horizon.getTime() && fireAt > now.getTime() - 2 * 60_000) {
-      items.push({
-        key: `routine:${rt.id}:${today}`,
-        user_id: rt.user_id,
-        title: '⏰ Routine time',
-        body: rt.title,
-      });
+    if (fireAt <= horizon && fireAt > now - 2 * 60_000) {
+      items.push({ key: `routine:${rt.id}:${today}`, user_id: rt.user_id, title: '⏰ Routine time', body: rt.title });
     }
   }
-
   return items;
 }
+
+// ---------- HTTP handler ----------
 
 Deno.serve(async (req) => {
   const auth = req.headers.get('Authorization') ?? '';
   const adminKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  // Accept: cron (service role bearer), or a signed-in user's JWT for test pushes.
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    adminKey,
-    { auth: { persistSession: false } },
-  );
+  const supabase = createAdminClient(Deno.env.get('SUPABASE_URL')!, adminKey);
 
   let body: any = {};
-  try { body = await req.json(); } catch { /* empty body ok */ }
+  try { body = await req.json(); } catch { /* empty ok */ }
 
   const vapidPublic = Deno.env.get('VAPID_PUBLIC_KEY');
   const vapidPrivate = Deno.env.get('VAPID_PRIVATE_KEY');
@@ -131,19 +253,18 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: 'VAPID secrets not set' }), { status: 500 });
   }
 
-  // Verify the caller: either service-role or an authenticated user asking for a test.
+  // Caller: service-role (cron) or a signed-in user (test push).
   const token = auth.replace('Bearer ', '');
   const isService = token === adminKey;
   if (!isService) {
-    const asUser = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY') ?? adminKey);
+    const asUser = createAdminClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY') ?? adminKey);
     const { data } = await asUser.auth.getUser(token);
     if (!data?.user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
-    body.user_id = data.user.id; // force test push to caller's own devices
+    body.user_id = data.user.id;
     body.test = true;
   }
 
-  // Pick subscriptions.
-  let subs: SubRow[] = [];
+  let subs: any[] = [];
   let items: DueItem[] = [];
   if (body.test) {
     const { data } = await supabase.from('push_subscriptions').select('*').eq('user_id', body.user_id);
@@ -151,10 +272,8 @@ Deno.serve(async (req) => {
     items = [{ key: `test:${Date.now()}`, user_id: body.user_id, title: '🔔 LifeOS test alarm', body: 'Push works! Alarms will now ring even with the app closed.' }];
   } else {
     items = await dueItems(supabase);
-    // Skip already-fired keys.
     if (items.length) {
-      const keys = items.map((i) => i.key);
-      const { data: fired } = await supabase.from('alarm_fires').select('key').in('key', keys);
+      const { data: fired } = await supabase.from('alarm_fires').select('key').in('key', items.map((i) => i.key));
       const firedSet = new Set((fired ?? []).map((f: any) => f.key));
       items = items.filter((i) => !firedSet.has(i.key));
     }
@@ -180,37 +299,19 @@ Deno.serve(async (req) => {
   for (const sub of subs) {
     for (const item of perUser.get(sub.user_id) ?? []) {
       const payload = JSON.stringify({
-        title: item.title,
-        body: item.body,
-        key: item.key,
-        kind: item.key.split(':')[0],
-        url: '/',
+        title: item.title, body: item.body,
+        key: item.key, kind: item.key.split(':')[0], url: '/',
       });
       try {
-        await webpush.sendNotification(
-          {
-            endpoint: sub.endpoint,
-            keys: { p256dh: sub.p256dh, auth: sub.auth },
-          },
-          enc.encode(payload) as any,
-          {
-            vapidDetails: {
-              subject: 'mailto:alarms@lifeos.app',
-              publicKey: vapidPublic,
-              privateKey: vapidPrivate,
-            },
-            TTL: 300,
-            urgency: 'high',
-          } as any,
-        );
-        sent++;
-      } catch (e: any) {
-        if (e?.statusCode === 404 || e?.statusCode === 410) deadEndpoints.push(sub.endpoint);
+        const r = await sendPush(sub, payload, vapidPublic, vapidPrivate);
+        if (r.ok) sent++;
+        else if (r.status === 404 || r.status === 410) deadEndpoints.push(sub.endpoint);
+      } catch {
+        // network/encryption failure — leave subscription, retry next minute
       }
     }
   }
 
-  // Mark fired + clean up dead subscriptions.
   if (items.length && !body.test) {
     await supabase.from('alarm_fires').upsert(items.map((i) => ({ key: i.key })), { onConflict: 'key' });
   }
@@ -223,3 +324,43 @@ Deno.serve(async (req) => {
     headers: { 'Content-Type': 'application/json' },
   });
 });
+
+// Minimal supabase-js-compatible client over fetch (avoids esm.sh at bundle time).
+function createAdminClient(url: string, apiKey: string) {
+  const call = async (method: string, path: string, body?: any, prefer?: string) => {
+    const res = await fetch(`${url}/rest/v1/${path}`, {
+      method,
+      headers: {
+        apikey: apiKey,
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        ...(prefer ? { Prefer: prefer } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    return { data: res.ok ? (await res.json().catch(() => null)) : null, error: res.ok ? null : await res.text() };
+  };
+
+  // Fluent query builder: .from(t).select(c).eq(a,b).eq(c,d).not(...).in(...)
+  function query(table: string, cols: string) {
+    const params: string[] = [`select=${cols}`];
+    const p = {
+      eq(col: string, val: any) { params.push(`${col}=eq.${val}`); return p; },
+      neq(col: string, val: any) { params.push(`${col}=neq.${val}`); return p; },
+      in(col: string, vals: any[]) { params.push(`${col}=in.(${vals.join(',')})`); return p; },
+      not(col: string, op: string, val: any) { params.push(`${col}=not.${op}.${val}`); return p; },
+      async then(resolve: any, reject: any) {
+        try { resolve(await call('GET', `${table}?${params.join('&')}`)); } catch (e) { reject(e); }
+      },
+    };
+    return p;
+  }
+
+  return {
+    from: (table: string) => ({
+      select: (cols: string) => query(table, cols),
+      upsert: async (rows: any) => call('POST', table, rows, 'resolution=merge-duplicates'),
+      delete: () => ({ eq: async (col: string, val: any) => call('DELETE', `${table}?${col}=eq.${val}`) }),
+    }),
+  };
+}
