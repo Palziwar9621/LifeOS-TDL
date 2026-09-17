@@ -420,6 +420,12 @@ function AboutSection() {
       <p className="text-sm muted">
         LifeOS is your personal productivity system: tasks, projects, goals, notes, ideas, weekly planning, calendar, reminders, focus sessions and gentle statistics — local-first and synced end-to-end via Supabase.
       </p>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <a className="btn-primary btn-sm" href="/download.html" target="_blank" rel="noreferrer">
+          📲 Get the app
+        </a>
+        <span className="text-xs muted">Windows app · Android app</span>
+      </div>
       <p className="mt-2 text-xs muted">Version 1.0.0 · Built with React, Vite, Tailwind CSS & Supabase</p>
     </section>
   );
