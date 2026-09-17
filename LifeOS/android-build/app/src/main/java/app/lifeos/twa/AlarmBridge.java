@@ -1,6 +1,7 @@
 package app.lifeos.twa;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.webkit.JavascriptInterface;
 
 /**
@@ -14,7 +15,17 @@ public class AlarmBridge {
     public AlarmBridge(Context ctx) { this.ctx = ctx.getApplicationContext(); }
 
     @JavascriptInterface
-    public void scheduleAlarms(String json) {
-        AlarmScheduler.scheduleFromJson(ctx, json);
+    public String scheduleAlarms(String json) {
+        return AlarmScheduler.scheduleFromJson(ctx, json);
+    }
+
+    /** Debug/diagnostic: has a next-run been persisted (i.e. a schedule arrived)? */
+    @JavascriptInterface
+    public String status() {
+        SharedPreferences prefs = ctx.getSharedPreferences("lifeos_alarms", Context.MODE_PRIVATE);
+        String payload = prefs.getString("payload", null);
+        String keys = prefs.getString("scheduled_keys", "");
+        int count = keys.isEmpty() ? 0 : keys.split(",").length;
+        return "{\"hasPayload\":" + (payload != null) + ",\"scheduled\":" + count + "}";
     }
 }

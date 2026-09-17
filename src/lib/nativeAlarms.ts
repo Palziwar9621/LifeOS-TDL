@@ -85,7 +85,7 @@ export function computeUpcomingAlarms(): NativeAlarm[] {
 // ------------------------------------------------------------------
 
 /** Detect the native layer. Android injects scheduleAlarms directly on window.LifeOSNative (addJavascriptInterface); Electron nests it under LifeOSNative.alarms (contextBridge). */
-function bridgeFn(): ((payload: string) => void) | null {
+function bridgeFn(): ((payload: string) => unknown) | null {
   if (typeof window === 'undefined') return null;
   const n = (window as any).LifeOSNative;
   if (!n) return null;
@@ -93,6 +93,10 @@ function bridgeFn(): ((payload: string) => void) | null {
   if (typeof fn !== 'function') return null;
   return fn.bind(n.alarms ?? n);
 }
+
+/** Last result reported by the native layer ({ok, scheduled, next} or {ok:false, error}). */
+export let lastSyncStatus: string | null = null;
+export function nativeSyncStatus(): string | null { return lastSyncStatus; }
 
 export function nativeAlarmsActive(): 'android' | 'electron' | null {
   if (!bridgeFn()) return null;
@@ -105,14 +109,17 @@ let lastPayload = '';
 /** Push current upcoming alarms to the native layer (no-op in browsers). */
 export function syncNativeAlarms(): void {
   const fn = bridgeFn();
-  if (!fn) return;
+  if (!fn) { lastSyncStatus = null; return; }
   const alarms = computeUpcomingAlarms();
   const payload = JSON.stringify({ sound: alarmSound(), alarms });
   if (payload === lastPayload) return;
   lastPayload = payload;
   try {
-    fn(payload);
-  } catch { /* native layer broken — never crash the web app */ }
+    const res = fn(payload);
+    lastSyncStatus = typeof res === 'string' ? res : JSON.stringify(res);
+  } catch (e) {
+    lastSyncStatus = 'error: ' + String(e);
+  }
 }
 
 let syncTimer: ReturnType<typeof setInterval> | null = null;

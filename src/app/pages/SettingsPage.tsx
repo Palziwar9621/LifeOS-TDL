@@ -7,6 +7,7 @@ import { todayStr } from '../../lib/dates';
 import { exportAllJson, downloadJson, tasksCsv, parseBackupJson, readFileText } from '../../lib/backup';
 import { requestNotificationPermission, notificationPermission } from '../../lib/notifications';
 import { enablePush, disablePush, pushSupported, pushPermission, sendTestPush, pushEnvironment, nativeAlarmsActive } from '../../lib/push';
+import { nativeSyncStatus } from '../../lib/nativeAlarms';
 import { AlarmSoundPicker } from '../AlarmSoundPicker';
 import { updateUserPassword } from '../../lib/auth';
 import { getClient, loadSupabaseConfig } from '../../lib/supabase';
@@ -169,6 +170,11 @@ function PushAlarmsCard({ toast }: any) {
         {!nativeAlarmsActive() && (
           <p className="mt-1 text-xs text-amber-600 dark:text-amber-300">
             Native alarms not connected yet — fully close and reopen the app once, then check again.
+          </p>
+        )}
+        {nativeAlarmsActive() && (
+          <p className="mt-1 text-[11px] muted break-all">
+            Bridge status: {nativeSyncStatus() ?? 'not synced yet (first sync runs a few seconds after load)'}
           </p>
         )}
       </div>

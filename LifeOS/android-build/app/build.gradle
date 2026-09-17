@@ -57,7 +57,7 @@ android {
         applicationId "app.lifeos.twa"
         minSdkVersion 23
         targetSdkVersion 36
-        versionCode 7
+        versionCode 8
         versionName "1.2"
 
         // The name for the application

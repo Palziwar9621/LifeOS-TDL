@@ -23,13 +23,17 @@ public class AlarmScheduler {
     private static final String KEY_PAYLOAD = "payload";
     private static final String KEY_SCHEDULED = "scheduled_keys";
 
-    /** Entry point from the JS bridge: payload = {sound, alarms:[{key,at,title,body}]}. */
-    public static void scheduleFromJson(Context ctx, String json) {
+    /**
+     * Entry point from the JS bridge: payload = {sound, alarms:[{key,at,title,body}]}.
+     * Returns a status JSON so the web app (and its Settings screen) can see
+     * exactly what the native layer did — or the exact error if it failed.
+     */
+    public static String scheduleFromJson(Context ctx, String json) {
         try {
             JSONObject root = new JSONObject(json);
             SharedPreferences prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
             AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
-            if (am == null) return;
+            if (am == null) return "{\"ok\":false,\"error\":\"no AlarmManager\"}";
 
             // Cancel every previously scheduled alarm (stable request code per key).
             String prev = prefs.getString(KEY_SCHEDULED, null);
@@ -46,7 +50,9 @@ public class AlarmScheduler {
 
             StringBuilder scheduledKeys = new StringBuilder();
             JSONArray alarms = root.optJSONArray("alarms");
-            if (alarms == null) return;
+            if (alarms == null) return "{\"ok\":false,\"error\":\"no alarms array\"}";
+            int scheduled = 0;
+            long nextAt = 0;
             for (int i = 0; i < alarms.length(); i++) {
                 JSONObject a = alarms.getJSONObject(i);
                 String key = a.optString("key", "");
@@ -62,10 +68,13 @@ public class AlarmScheduler {
                 scheduleExact(ctx, am, key, at);
                 if (scheduledKeys.length() > 0) scheduledKeys.append(',');
                 scheduledKeys.append(key);
+                scheduled++;
+                if (nextAt == 0 || at < nextAt) nextAt = at;
             }
             prefs.edit().putString(KEY_SCHEDULED, scheduledKeys.toString()).apply();
-        } catch (Exception ignored) {
-            // Never crash the shell from bad JS input.
+            return "{\"ok\":true,\"scheduled\":" + scheduled + ",\"next\":" + nextAt + "}";
+        } catch (Exception e) {
+            return "{\"ok\":false,\"error\":\"" + String.valueOf(e).replace("\\", " ").replace("\"", "'") + "\"}";
         }
     }
 
