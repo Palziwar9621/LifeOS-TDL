@@ -22,14 +22,14 @@ import android.webkit.PermissionRequest;
  * LifeOS standalone app — native WebView shell with a branded splash screen.
  *
  * The splash (navy screen, centered logo, gentle pulse) covers the WebView
- * until the site finishes loading, then fades out over 300ms. Unlike a TWA,
- * everything runs in this app's own process: always standalone, no Chrome,
- * no verification, no URL bar.
+ * until the site finishes loading, then fades out. Unlike a TWA, everything
+ * runs in this app's own process: always standalone, no Chrome, no
+ * verification, no URL bar.
  *
  * Touch-input rule: NEVER launch another activity or system dialog from
  * onCreate — a permission/settings screen stealing focus before the WebView
  * is attached leaves touch dead after returning. All prompts happen after
- * the page has fully loaded, once.
+ * the page has fully loaded.
  */
 public class MainActivity extends Activity {
     private WebView web;
@@ -55,9 +55,8 @@ public class MainActivity extends Activity {
 
         // Pull-to-refresh: only when the page's inner scroll container (the
         // app scrolls inside <main>; WebView scrollY stays 0) is at the top.
-        // TopAwareSwipeRefreshLayout consults canChildScrollUp() synchronously
-        // at gesture start — the page pushes its scroll state here via the
-        // bridge on every scroll (see TopAwareSwipeRefreshLayout docs).
+        // The page reports its scroll state through the LifeOSScroll bridge;
+        // TopAwareSwipeRefreshLayout reads it synchronously at gesture start.
         TopAwareSwipeRefreshLayout swipe = findViewById(R.id.swipe);
         swipe.setOnRefreshListener(() -> {
             web.reload();
@@ -69,18 +68,6 @@ public class MainActivity extends Activity {
                 runOnUiThread(() -> swipe.setPageScrolled(scrolled));
             }
         }, "LifeOSScroll");
-        web.setWebViewClient(new WebViewClient() {
-            @Override
-            public void onPageFinished(WebView view, String url) {
-                super.onPageFinished(view, url);
-                view.evaluateJavascript(
-                    "(function(){var f=function(){var els=document.querySelectorAll('main,.overflow-y-auto,[class*=overflow-y-auto]');" +
-                    "for(var i=0;i<els.length;i++){var e=els[i];" +
-                    "if(e.scrollHeight>e.clientHeight+4&&e.scrollTop>4){window.LifeOSScroll&&LifeOSScroll.setScrolled(true);return;}}" +
-                    "window.LifeOSScroll&&LifeOSScroll.setScrolled(false);};" +
-                    "window.addEventListener('scroll',f,true);f();})();", null);
-            }
-        });
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -111,10 +98,21 @@ public class MainActivity extends Activity {
             }
         });
 
-        // Keep navigation inside the app; external links go to the real browser.
+        // ONE WebViewClient for everything page-load related. (A second
+        // setWebViewClient call elsewhere overwrote this one before — the
+        // scroll hook silently never ran.)
         web.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageFinished(WebView view, String url) {
+                // Scroll-state reporter: watches every scroll container and
+                // pushes true/false to the native pull-to-refresh gate.
+                view.evaluateJavascript(
+                    "(function(){if(window.__lifeosScrollHook)return;window.__lifeosScrollHook=1;" +
+                    "var f=function(){var els=document.querySelectorAll('main,.overflow-y-auto,[class*=overflow-y-auto]');" +
+                    "for(var i=0;i<els.length;i++){var e=els[i];" +
+                    "if(e.scrollHeight>e.clientHeight+4&&e.scrollTop>4){window.LifeOSScroll&&LifeOSScroll.setScrolled(true);return;}}" +
+                    "window.LifeOSScroll&&LifeOSScroll.setScrolled(false);};" +
+                    "window.addEventListener('scroll',f,true);f();})();", null);
                 hideSplash();
                 maybeAskNotifPermission();
             }
@@ -153,9 +151,9 @@ public class MainActivity extends Activity {
 
     /**
      * Removes the splash immediately — no fade animation. An animation's
-     * onAnimationEnd can be skipped (activity paused mid-fade, animation
-     * canceled), leaving this invisible-but-clickable overlay stuck on top
-     * of the WebView eating every touch (the touch-freeze bug).
+     * onAnimationEnd can be skipped (activity paused mid-hide), leaving this
+     * invisible-but-clickable overlay stuck on top of the WebView eating
+     * every touch (the touch-freeze bug).
      */
     private void hideSplash() {
         if (splashGone || splash == null) return;
