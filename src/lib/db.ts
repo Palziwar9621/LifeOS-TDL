@@ -9,7 +9,7 @@ import type {
 } from './types';
 import { idbGet, idbSet, cacheKey, idbWipeUser } from './idb';
 import { getClient } from './supabase';
-import { loadOutbox, pushOp, markFlushed, bumpAttempt, type OutboxOp } from './outbox';
+import { loadOutbox, pushOp, markFlushed, bumpAttempt, retryAllDead, type OutboxOp } from './outbox';
 import { todayStr } from './dates';
 
 /** Demo mode (#demo): no Supabase, purely local — used for previews and trials. */
@@ -73,6 +73,15 @@ export function subscribeDb(fn: () => void): () => void {
 }
 export function getDbVersion() { return version; }
 export function getOutboxCount() { return outbox.filter((o) => !o.dead).length; }
+/** All unsynced ops, including parked (dead) ones — for honest sync badges. */
+export function getUnsyncedCount() { return outbox.length; }
+/** Un-park all dead ops and retry them immediately. */
+export async function retryParked(): Promise<void> {
+  outbox = await retryAllDead();
+  await idbSet('outbox', outbox);
+  emit();
+  void flush();
+}
 export function getOnline() { return online; }
 export function currentUserId() { return uid; }
 
@@ -255,7 +264,11 @@ export async function pull(): Promise<void> {
     ];
     for (const t of rowTables) {
       const { data, error } = await sb.from(t).select('*').eq('user_id', uid);
-      if (error) { hadError = true; continue; }
+      if (error) {
+        hadError = true;
+        lastSyncError = pullErrorMessage(error);
+        continue;
+      }
       const remote: Row[] = data ?? [];
       const localList = ((state as any)[t] ?? []) as Row[];
       const pendingIds = new Set(
@@ -282,6 +295,7 @@ export async function pull(): Promise<void> {
     await persistAll();
   } catch (e: any) {
     hadError = true;
+    lastSyncError = pullErrorMessage(e);
     toast(pullErrorMessage(e), 'error');
   } finally {
     pulling = false;
@@ -289,6 +303,10 @@ export async function pull(): Promise<void> {
   }
   if (hadError && online) {
     toast('Sync problem — your data is safe locally. Will retry.', 'error');
+  } else if (lastSyncError) {
+    // Successful full refresh: clear any stale sync-error state.
+    lastSyncError = null;
+    emit();
   }
 }
 

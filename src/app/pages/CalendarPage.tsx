@@ -20,6 +20,22 @@ interface CalItem {
   occ?: string;
 }
 
+type CalFilter = 'task' | 'block' | 'reminder' | 'milestone';
+const FILTER_LABEL: Record<CalFilter, { label: string; icon: string; color: string }> = {
+  task: { label: 'Tasks', icon: 'check', color: '#6366f1' },
+  block: { label: 'Blocks', icon: 'clock', color: '#0ea5e9' },
+  reminder: { label: 'Reminders', icon: 'bell', color: '#f59e0b' },
+  milestone: { label: 'Milestones', icon: 'flag', color: '#8b5cf6' },
+};
+const FILTERS_KEY = 'lifeos.calendar.filters';
+function loadFilters(): Set<CalFilter> {
+  try {
+    const raw = localStorage.getItem(FILTERS_KEY);
+    if (raw) return new Set(JSON.parse(raw) as CalFilter[]);
+  } catch { /* ignore */ }
+  return new Set(['task', 'block', 'reminder', 'milestone']);
+}
+
 export function CalendarPage() {
   const s = dbState();
   const { version } = useApp();
@@ -27,6 +43,17 @@ export function CalendarPage() {
   const [view, setView] = useState<'day' | 'week' | 'month'>('week');
   const [cursor, setCursor] = useState(today);
   const [editing, setEditing] = useState<Task | null>(null);
+  const [filters, setFilters] = useState<Set<CalFilter>>(loadFilters);
+
+  const toggleFilter = (f: CalFilter) => {
+    setFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(f)) next.delete(f);
+      else next.add(f);
+      try { localStorage.setItem(FILTERS_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
+      return next;
+    });
+  };
 
   const itemsByDate = useMemo(() => {
     const map = new Map<string, CalItem[]>();
@@ -42,7 +69,7 @@ export function CalendarPage() {
     })();
 
     for (const t of s.tasks) {
-      if (t.deleted || t.archived) continue;
+      if (!filters.has('task') || t.deleted || t.archived) continue;
       if (t.status === 'cancelled') continue;
       const cat = s.categories.find((c) => c.id === t.category_id);
       const proj = s.projects.find((p) => p.id === t.project_id);
@@ -58,7 +85,7 @@ export function CalendarPage() {
       }
     }
     for (const b of s.schedule_blocks) {
-      if (b.deleted) continue;
+      if (!filters.has('block') || b.deleted) continue;
       // blocks repeat weekly — paint over range if weekday matches
       let d = rangeStart;
       while (d <= rangeEnd) {
@@ -69,14 +96,14 @@ export function CalendarPage() {
       }
     }
     for (const r of s.reminders) {
-      if (r.done || r.deleted) continue;
+      if (!filters.has('reminder') || r.done || r.deleted) continue;
       const { date, time } = splitIsoLocal(r.due_at);
       if (date >= rangeStart && date <= rangeEnd) {
         push(date, { kind: 'reminder', id: r.id, title: r.title, time, date, color: '#f59e0b', icon: 'bell' });
       }
     }
     for (const m of s.project_milestones) {
-      if (m.done || !m.due_date) continue;
+      if (!filters.has('milestone') || m.done || !m.due_date) continue;
       if (m.due_date >= rangeStart && m.due_date <= rangeEnd) {
         const p = s.projects.find((x) => x.id === m.project_id);
         push(m.due_date, { kind: 'milestone', id: m.id, title: '⚑ ' + m.title, date: m.due_date, color: p?.color ?? '#8b5cf6', icon: 'flag' });
@@ -86,7 +113,7 @@ export function CalendarPage() {
       list.sort((a, b) => (a.time ?? '99').localeCompare(b.time ?? '99'));
     }
     return map;
-  }, [s, cursor, view, version]);
+  }, [s, cursor, view, version, filters]);
 
   const move = (dir: number) => {
     if (view === 'day') setCursor(addDays(cursor, dir));
@@ -108,7 +135,7 @@ export function CalendarPage() {
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-extrabold tracking-tight">Calendar</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex overflow-hidden rounded-xl ring-1 ring-slate-900/10 dark:ring-white/10">
             {(['day', 'week', 'month'] as const).map((v) => (
               <button key={v} className={`px-3.5 py-2 text-sm font-semibold capitalize ${view === v ? 'bg-brand-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}
@@ -116,6 +143,26 @@ export function CalendarPage() {
             ))}
           </div>
         </div>
+      </div>
+
+      {/* Show/hide item types — remembered across visits */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        {(Object.keys(FILTER_LABEL) as CalFilter[]).map((f) => {
+          const on = filters.has(f);
+          const meta = FILTER_LABEL[f];
+          return (
+            <button key={f} onClick={() => toggleFilter(f)} aria-pressed={on}
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition ring-1 ${
+                on
+                  ? 'ring-slate-900/10 bg-slate-900/5 dark:bg-white/10 dark:ring-white/10'
+                  : 'opacity-40 ring-transparent bg-transparent'}
+              `}
+              title={on ? `Hide ${meta.label}` : `Show ${meta.label}`}>
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: on ? meta.color : '#94a3b8' }} />
+              {meta.label}
+            </button>
+          );
+        })}
       </div>
 
       <div className="card mb-4 flex items-center justify-between px-4 py-3">

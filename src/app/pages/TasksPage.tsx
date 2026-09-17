@@ -8,6 +8,7 @@ import { PRIORITY_ORDER, PRIORITY_LABEL } from '../../lib/types';
 import type { Task, Priority, TaskStatus } from '../../lib/types';
 import { TaskRow } from '../TaskRow';
 import { TaskEditor } from '../TaskEditor';
+import { QuickAddModal } from '../quickadd';
 import { RemindersPanel } from './RemindersPage';
 import { useApp } from '../store';
 
@@ -28,6 +29,7 @@ export function TasksPage() {
   const { confirm, confirmEl } = useConfirm();
   const [view, setView] = useState<ViewKey>((pageParams.view as ViewKey) ?? 'today');
   const [editing, setEditing] = useState<Task | null>(null);
+  const [quickOpen, setQuickOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [fPriority, setFPriority] = useState('');
   const [fProject, setFProject] = useState('');
@@ -199,6 +201,9 @@ export function TasksPage() {
           <button className={`btn-sm btn ${bulkMode ? 'btn-primary' : 'btn-secondary'}`} onClick={() => { setBulkMode((v) => !v); setSelected(new Set()); }}>
             {bulkMode ? 'Cancel' : 'Select'}
           </button>
+          <button className="btn-primary btn-sm" onClick={() => setQuickOpen(true)}>
+            <Icon name="plus" className="h-4 w-4" /> New task
+          </button>
         </div>
       </div>
 
@@ -280,6 +285,7 @@ export function TasksPage() {
       )}
 
       <TaskEditor task={editing} onClose={() => setEditing(null)} />
+      <QuickAddModal open={quickOpen} initialKind="task" onClose={() => setQuickOpen(false)} />
       {confirmEl}
     </div>
   );

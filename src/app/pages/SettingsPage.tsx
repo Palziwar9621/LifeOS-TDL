@@ -1,7 +1,7 @@
 // LifeOS — Settings
 import React, { useRef, useState } from 'react';
 import { Icon, useConfirm } from '../../ui/components';
-import { dbState, getSettings, updateSettings, createCategory, updateCategory, deleteCategory, createTag, deleteTag, updateProfile, getProfile, pull, createProject, createGoal, createNote, createIdea, createRememberItem, getLastSyncError } from '../../lib/db';
+import { dbState, getSettings, updateSettings, createCategory, updateCategory, deleteCategory, createTag, deleteTag, updateProfile, getProfile, pull, createProject, createGoal, createNote, createIdea, createRememberItem, getLastSyncError, getUnsyncedCount, retryParked } from '../../lib/db';
 import { useApp } from '../store';
 import { todayStr } from '../../lib/dates';
 import { exportAllJson, downloadJson, tasksCsv, parseBackupJson, readFileText } from '../../lib/backup';
@@ -214,9 +214,23 @@ function SyncSection({ toast }: any) {
         </div>
         <div className="flex items-center justify-between rounded-xl bg-slate-100 dark:bg-slate-800 px-4 py-3">
           <span>Pending changes</span>
-          <b>{pendingOps}</b>
+          <b className={getUnsyncedCount() > pendingOps ? 'text-amber-600' : undefined}>{pendingOps}</b>
         </div>
-        {getLastSyncError() && pendingOps > 0 && (
+        {getUnsyncedCount() > pendingOps && (
+          <div className="rounded-xl bg-amber-500/10 px-4 py-3">
+            <p className="text-xs font-bold text-amber-600 dark:text-amber-300">
+              {getUnsyncedCount() - pendingOps} change{getUnsyncedCount() - pendingOps === 1 ? '' : 's'} parked after repeated failures
+            </p>
+            <p className="mt-0.5 text-xs text-amber-600/90 dark:text-amber-300/90">
+              These were never uploaded to the server. Fix the error below, then tap Retry parked changes.
+            </p>
+            <button className="btn-primary mt-2 w-full" disabled={busy || !online}
+              onClick={async () => { setBusy(true); await retryParked(); await syncNow(); setBusy(false); }}>
+              <Icon name="sync" className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} /> Retry parked changes
+            </button>
+          </div>
+        )}
+        {getLastSyncError() && (
           <div className="rounded-xl bg-rose-500/10 px-4 py-3">
             <p className="text-xs font-bold text-rose-600 dark:text-rose-300">Last sync error</p>
             <p className="mt-0.5 break-words text-xs text-rose-600/90 dark:text-rose-300/90">{getLastSyncError()}</p>
