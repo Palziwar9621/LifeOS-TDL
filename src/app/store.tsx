@@ -5,7 +5,6 @@ import { getClient, loadSupabaseConfig, hasSupabase } from '../lib/supabase';
 import { getSession, onAuthChange, signOut as authSignOut } from '../lib/auth';
 import { initStore, resetStore, setToastFn, flush, pull, getOutboxCount, getOnline, subscribeDb, currentUserId, getDbVersion } from '../lib/db';
 import { startReminderScheduler } from '../lib/notifications';
-import { adoptNativeDismissals, startNativeAlarmSync } from '../lib/nativeAlarms';
 
 export type Page =
   | 'home' | 'today' | 'tasks' | 'calendar' | 'weekly' | 'projects' | 'goals'
@@ -122,15 +121,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         toast('Could not load local data. Trying a fresh sync…', 'error');
         await pull();
       }
-      if (!cancelled) {
-        // Adopt alarms turned off natively (Android notification action)
-        // BEFORE the scheduler's first check — otherwise a stopped alarm
-        // rings again the moment the app opens. Static imports only: a
-        // failed dynamic chunk here silently killed ALL notifications.
-        adoptNativeDismissals();
-        startReminderScheduler();
-        startNativeAlarmSync();
-      }
+      if (!cancelled) startReminderScheduler();
+      // Hand upcoming alarms to the native layer (Android shell / Electron)
+      // so alarms ring even when the app is closed. No-op in browsers.
+      import('../lib/nativeAlarms').then((m) => m.startNativeAlarmSync());
     })();
     return () => { cancelled = true; };
   }, [session?.user?.id]);

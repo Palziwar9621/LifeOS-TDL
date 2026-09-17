@@ -39,16 +39,11 @@ export function alertsSupported(): boolean {
   return typeof Notification !== 'undefined';
 }
 
-/** Current notification permission. In the Android shell this asks the
- * native layer (Notification.permission in a WebView always reads 'default'
- * — the WebView cannot see the app's real Android permission). */
+/** Current notification permission ('granted' inside the Android shell — the
+ * native side owns it; the WebView itself has no Notification API). */
 export function alertPermission(): NotificationPermission | 'unsupported' {
   if (typeof window === 'undefined') return 'unsupported';
-  const native = (window as any).LifeOSNative;
-  if (native?.notificationPermission) {
-    try { return native.notificationPermission(); } catch { /* fall through */ }
-  }
-  if (native?.notify) return 'granted';
+  if ((window as any).LifeOSNative?.notify) return 'granted';
   if (typeof Notification === 'undefined') return 'unsupported';
   return Notification.permission;
 }

@@ -4,7 +4,7 @@
     android:layout_height="match_parent"
     android:background="#0F172A">
 
-    <app.lifeos.twa.TopAwareSwipeRefreshLayout
+    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
         android:id="@+id/swipe"
         android:layout_width="match_parent"
         android:layout_height="match_parent">
@@ -14,7 +14,7 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
 
-    </app.lifeos.twa.TopAwareSwipeRefreshLayout>
+    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
     <!-- Splash overlay: sits on top of the WebView until the site finishes
          loading, then fades out (alpha animation in MainActivity). -->

@@ -30,25 +30,16 @@ function alarmSound(): string {
   return ((getSettings().data as any)?.alarm_sound as string) || 'chime';
 }
 
-let lastSkips: string[] = [];
-/** Why alarms were excluded from the last compute — diagnostics for Settings. */
-export function lastComputeSkips(): string[] { return lastSkips; }
-
 export function computeUpcomingAlarms(): NativeAlarm[] {
   const out: NativeAlarm[] = [];
-  lastSkips = [];
   const now = Date.now();
   const horizon = now + 24 * 60 * 60 * 1000;
   const s = dbState();
   const defaultSound = alarmSound();
 
   const add = (key: string, at: number, title: string, body: string) => {
-    const skipDismissed = isKeyDismissed(key);
-    // Diagnostics: record why an alarm wasn't included (visible in Settings).
-    if (skipDismissed) lastSkips.push(`${key}:dismissed`);
-    else if (at <= now) lastSkips.push(`${key}:past(${Math.round((now - at) / 60000)}m)`);
-    else if (at > horizon) lastSkips.push(`${key}:beyond24h`);
-    else out.push({ key, at, title, body: body + (defaultSound !== 'none' ? '' : ' (silent)') });
+    if (at > now && at <= horizon && !isKeyDismissed(key))
+      out.push({ key, at, title, body: body + (defaultSound !== 'none' ? '' : ' (silent)') });
   };
 
   // Reminders
@@ -117,26 +108,19 @@ export function nativeAlarmsActive(): 'android' | 'electron' | null {
 
 let lastPayload = '';
 
-/**
- * Adopt alarms the user turned off natively on this device (Android
- * notification action) into the central dismissal store — silences every
- * device. Must run BEFORE any scheduler's first check, or a stopped alarm
- * rings again the moment the app opens.
- */
-export function adoptNativeDismissals(): void {
-  try {
-    const n = (typeof window !== 'undefined') ? (window as any).LifeOSNative : null;
-    const keys: string = n?.dismissedKeys?.() ?? '';
-    for (const k of keys.split(',')) if (k && !isKeyDismissed(k)) dismissKey(k);
-  } catch { /* bridge without the method — fine */ }
-}
-
 /** Push current upcoming alarms to the native layer (no-op in browsers). */
 export function syncNativeAlarms(): void {
+  const n = (typeof window !== 'undefined') ? (window as any).LifeOSNative : null;
   const fn = bridgeFn();
   if (!fn) { lastSyncStatus = null; return; }
 
-  adoptNativeDismissals();
+  // Adopt alarms the user turned off natively on this device (Android
+  // notification action) into the shared record — silences every device.
+  try {
+    const keys: string = n?.dismissedKeys?.() ?? '';
+    for (const k of keys.split(',')) if (k && !isKeyDismissed(k)) dismissKey(k);
+  } catch { /* bridge without the new method — fine */ }
+
   const alarms = computeUpcomingAlarms();
   const payload = JSON.stringify({ sound: alarmSound(), alarms });
   if (payload === lastPayload) return;
@@ -147,9 +131,6 @@ export function syncNativeAlarms(): void {
   } catch (e) {
     lastSyncStatus = 'error: ' + String(e);
   }
-  console.log('[LifeOS alarms] scheduled:', alarms.length, 'native:', lastSyncStatus,
-    alarms.length ? 'next in ' + Math.round((alarms.reduce((m, a) => Math.min(m, a.at), Infinity) - Date.now()) / 60000) + 'min' : '',
-    'skipped:', lastSkips.slice(0, 5));
 }
 
 let syncTimer: ReturnType<typeof setInterval> | null = null;

@@ -76,13 +76,4 @@ public class AlarmBridge {
     public void notify(String key, String title, String body) {
         NotifHelper.show(ctx, key, title, body);
     }
-
-    /** Real Android notification permission state — Notification.permission
-     * in the WebView always reads 'default', so the web UI must ask us. */
-    @JavascriptInterface
-    public String notificationPermission() {
-        if (Build.VERSION.SDK_INT < 33) return "granted";
-        return ctx.checkSelfPermission("android.permission.POST_NOTIFICATIONS")
-                == android.content.pm.PackageManager.PERMISSION_GRANTED ? "granted" : "denied";
-    }
 }

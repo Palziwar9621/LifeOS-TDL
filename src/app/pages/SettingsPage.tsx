@@ -8,7 +8,7 @@ import { exportAllJson, downloadJson, tasksCsv, parseBackupJson, readFileText } 
 import { requestNotificationPermission, notificationPermission } from '../../lib/notifications';
 import { enablePush, disablePush, pushSupported, pushPermission, sendTestPush, pushEnvironment, nativeAlarmsActive } from '../../lib/push';
 import { getAlertMode, setAlertMode, alertPermission, requestAlertPermission, type AlertMode } from '../../lib/alerts';
-import { nativeSyncStatus, computeUpcomingAlarms, lastComputeSkips } from '../../lib/nativeAlarms';
+import { nativeSyncStatus } from '../../lib/nativeAlarms';
 import { AlarmSoundPicker } from '../AlarmSoundPicker';
 import { updateUserPassword } from '../../lib/auth';
 import { getClient, loadSupabaseConfig } from '../../lib/supabase';
@@ -237,19 +237,9 @@ function PushAlarmsCard({ toast }: any) {
           </p>
         )}
         {nativeAlarmsActive() && (
-          <div className="mt-2 rounded-xl bg-slate-100 p-2 dark:bg-slate-800">
-            <p className="text-[11px] muted break-all">
-              <b>Native schedule:</b> {nativeSyncStatus() ?? 'not synced yet (first sync runs a few seconds after load)'}
-            </p>
-            <p className="mt-1 text-[11px] muted break-all">
-              <b>Computed alarms:</b> {JSON.stringify(computeUpcomingAlarms().map((a) => ({ t: new Date(a.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), title: a.title.replace(/^⏰\s*/, '') })))}
-            </p>
-            {lastComputeSkips().length > 0 && (
-              <p className="mt-1 text-[11px] muted break-all">
-                <b>Skipped:</b> {lastComputeSkips().slice(0, 6).join(' · ')}
-              </p>
-            )}
-          </div>
+          <p className="mt-1 text-[11px] muted break-all">
+            Bridge status: {nativeSyncStatus() ?? 'not synced yet (first sync runs a few seconds after load)'}
+          </p>
         )}
       </div>
     );
