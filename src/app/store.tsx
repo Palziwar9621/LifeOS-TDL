@@ -121,10 +121,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         toast('Could not load local data. Trying a fresh sync…', 'error');
         await pull();
       }
-      if (!cancelled) startReminderScheduler();
-      // Hand upcoming alarms to the native layer (Android shell / Electron)
-      // so alarms ring even when the app is closed. No-op in browsers.
-      import('../lib/nativeAlarms').then((m) => m.startNativeAlarmSync());
+      if (!cancelled) {
+        // Adopt alarms turned off natively (Android notification action)
+        // BEFORE the scheduler's first check — otherwise a stopped alarm
+        // rings again the moment the app opens.
+        import('../lib/nativeAlarms').then((m) => {
+          m.adoptNativeDismissals();
+          startReminderScheduler();
+          m.startNativeAlarmSync();
+        });
+      }
     })();
     return () => { cancelled = true; };
   }, [session?.user?.id]);

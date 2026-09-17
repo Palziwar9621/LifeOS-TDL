@@ -108,19 +108,26 @@ export function nativeAlarmsActive(): 'android' | 'electron' | null {
 
 let lastPayload = '';
 
+/**
+ * Adopt alarms the user turned off natively on this device (Android
+ * notification action) into the central dismissal store — silences every
+ * device. Must run BEFORE any scheduler's first check, or a stopped alarm
+ * rings again the moment the app opens.
+ */
+export function adoptNativeDismissals(): void {
+  try {
+    const n = (typeof window !== 'undefined') ? (window as any).LifeOSNative : null;
+    const keys: string = n?.dismissedKeys?.() ?? '';
+    for (const k of keys.split(',')) if (k && !isKeyDismissed(k)) dismissKey(k);
+  } catch { /* bridge without the method — fine */ }
+}
+
 /** Push current upcoming alarms to the native layer (no-op in browsers). */
 export function syncNativeAlarms(): void {
-  const n = (typeof window !== 'undefined') ? (window as any).LifeOSNative : null;
   const fn = bridgeFn();
   if (!fn) { lastSyncStatus = null; return; }
 
-  // Adopt alarms the user turned off natively on this device (Android
-  // notification action) into the shared record — silences every device.
-  try {
-    const keys: string = n?.dismissedKeys?.() ?? '';
-    for (const k of keys.split(',')) if (k && !isKeyDismissed(k)) dismissKey(k);
-  } catch { /* bridge without the new method — fine */ }
-
+  adoptNativeDismissals();
   const alarms = computeUpcomingAlarms();
   const payload = JSON.stringify({ sound: alarmSound(), alarms });
   if (payload === lastPayload) return;
