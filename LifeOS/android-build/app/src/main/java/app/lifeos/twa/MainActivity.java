@@ -8,7 +8,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
-import android.view.animation.AlphaAnimation;
 import android.view.animation.Animation;
 import android.view.animation.AnimationUtils;
 import android.view.Window;
@@ -121,18 +120,18 @@ public class MainActivity extends Activity {
         web.loadUrl("https://life-os-tdl.vercel.app/");
     }
 
+    /**
+     * Removes the splash immediately — no fade animation. An animation's
+     * onAnimationEnd can be skipped (activity paused mid-fade, animation
+     * canceled), leaving this invisible-but-clickable overlay stuck on top
+     * of the WebView eating every touch (the touch-freeze bug).
+     */
     private void hideSplash() {
         if (splashGone || splash == null) return;
         splashGone = true;
-        AlphaAnimation fade = new AlphaAnimation(1f, 0f);
-        fade.setDuration(300);
-        fade.setFillAfter(true);
-        fade.setAnimationListener(new Animation.AnimationListener() {
-            @Override public void onAnimationStart(Animation a) {}
-            @Override public void onAnimationEnd(Animation a) { splash.setVisibility(View.GONE); }
-            @Override public void onAnimationRepeat(Animation a) {}
-        });
-        splash.startAnimation(fade);
+        splash.setClickable(false);
+        splash.setFocusable(false);
+        splash.setVisibility(View.GONE);
     }
 
 
@@ -146,6 +145,9 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         if (web != null) web.onResume();
+        // Belt-and-braces: if the splash somehow survived (paused mid-hide),
+        // kill it on return so touch is never dead.
+        if (splashGone && splash != null) splash.setVisibility(View.GONE);
     }
 
     @Override
