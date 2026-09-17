@@ -1,0 +1,10 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "app.lifeos.twa",
+    "sha256_cert_fingerprints": [
+      "B5:41:1A:7A:61:0A:E9:88:7F:1E:66:30:C9:0D:98:6F:2F:A4:79:E1:50:36:CB:7E:FF:D4:D9:90:0C:C2:AC:33"
+    ]
+  }
+}]
