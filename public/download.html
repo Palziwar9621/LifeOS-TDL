@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Download LifeOS — Windows & Android</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px;
+    background: #f1f5f9; color: #0f172a;
+  }
+  @media (prefers-color-scheme: dark) { body { background: #0f172a; color: #e2e8f0; } }
+  .wrap { max-width: 720px; width: 100%; }
+  h1 { font-size: 2rem; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 4px; }
+  .sub { opacity: .7; margin-bottom: 28px; }
+  .grid { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; }
+  @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
+  .card {
+    background: #fff; border-radius: 20px; padding: 24px;
+    box-shadow: 0 1px 3px rgb(0 0 0 / .08), 0 8px 24px rgb(0 0 0 / .05);
+  }
+  @media (prefers-color-scheme: dark) { .card { background: #1e293b; } }
+  .card h2 { font-size: 1.05rem; font-weight: 700; display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .card p { font-size: .85rem; opacity: .7; margin-bottom: 16px; line-height: 1.45; }
+  .btn {
+    display: block; width: 100%; text-align: center; text-decoration: none; cursor: pointer;
+    border: 0; border-radius: 12px; padding: 12px 16px; font-size: .9rem; font-weight: 700;
+    background: #4f46e5; color: #fff; transition: filter .15s;
+  }
+  .btn:hover { filter: brightness(1.1); }
+  .btn + .btn { margin-top: 10px; }
+  .btn.ghost { background: transparent; color: inherit; box-shadow: inset 0 0 0 1.5px rgb(148 163 184 / .5); }
+  .btn[disabled] { opacity: .45; cursor: default; }
+  .logo { font-size: 2.6rem; }
+  .note { margin-top: 24px; font-size: .78rem; opacity: .6; line-height: 1.5; }
+  #pwaDone { display: none; margin-top: 10px; font-size: .8rem; color: #10b981; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo">⏰</div>
+  <h1>Get the LifeOS app</h1>
+  <p class="sub">Same account, same data — on every device.</p>
+
+  <div class="grid">
+    <div class="card">
+      <h2>🪟 Windows</h2>
+      <p>Standalone desktop app. Lives in your system tray so alarms keep working. First launch may show a "Windows protected your PC" note — click <b>More info → Run anyway</b>.</p>
+      <a class="btn" id="winSetup" href="https://github.com/Palziwar9621/LifeOS-TDL/releases/latest/download/LifeOS-Setup.exe">⬇ Download installer</a>
+      <a class="btn ghost" id="winPortable" href="https://github.com/Palziwar9621/LifeOS-TDL/releases/latest/download/LifeOS-Portable.exe">Download portable (no install)</a>
+    </div>
+
+    <div class="card">
+      <h2>🤖 Android</h2>
+      <p>Installs like a normal app: own icon, full screen, offline support, and background alarms once push is enabled.</p>
+      <button class="btn" id="pwaInstall" disabled>📲 Install app</button>
+      <p id="pwaDone">✓ Installed! Find LifeOS in your app drawer.</p>
+      <a class="btn ghost" href="https://github.com/Palziwar9621/LifeOS-TDL/releases/latest/download/LifeOS.apk">⬇ Download APK</a>
+      <p style="margin:10px 0 0; font-size:.72rem;">APK: after download, tap it and allow "Install unknown apps" if asked.</p>
+    </div>
+  </div>
+
+  <p class="note">
+    If a download button opens a 404, the release assets haven't been published yet —
+    go to <a href="https://github.com/Palziwar9621/LifeOS-TDL/releases" style="color:#6366f1;">GitHub Releases</a> to check.
+    iOS/iPhone: open this site in Safari → Share → "Add to Home Screen".
+  </p>
+</div>
+
+<script>
+  // Native PWA install prompt (Android Chrome / desktop Chrome/Edge).
+  let deferred = null;
+  const btn = document.getElementById('pwaInstall');
+  const done = document.getElementById('pwaDone');
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferred = e;
+    btn.disabled = false;
+  });
+  btn.addEventListener('click', async () => {
+    if (!deferred) return;
+    deferred.prompt();
+    const { outcome } = await deferred.userChoice;
+    if (outcome === 'accepted') { done.style.display = 'block'; btn.style.display = 'none'; }
+    deferred = null;
+  });
+  // Already installed?
+  if (window.matchMedia('(display-mode: standalone)').matches) {
+    done.style.display = 'block'; btn.style.display = 'none';
+  }
+</script>
+</body>
+</html>
