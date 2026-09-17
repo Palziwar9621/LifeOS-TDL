@@ -30,16 +30,25 @@ function alarmSound(): string {
   return ((getSettings().data as any)?.alarm_sound as string) || 'chime';
 }
 
+let lastSkips: string[] = [];
+/** Why alarms were excluded from the last compute — diagnostics for Settings. */
+export function lastComputeSkips(): string[] { return lastSkips; }
+
 export function computeUpcomingAlarms(): NativeAlarm[] {
   const out: NativeAlarm[] = [];
+  lastSkips = [];
   const now = Date.now();
   const horizon = now + 24 * 60 * 60 * 1000;
   const s = dbState();
   const defaultSound = alarmSound();
 
   const add = (key: string, at: number, title: string, body: string) => {
-    if (at > now && at <= horizon && !isKeyDismissed(key))
-      out.push({ key, at, title, body: body + (defaultSound !== 'none' ? '' : ' (silent)') });
+    const skipDismissed = isKeyDismissed(key);
+    // Diagnostics: record why an alarm wasn't included (visible in Settings).
+    if (skipDismissed) lastSkips.push(`${key}:dismissed`);
+    else if (at <= now) lastSkips.push(`${key}:past(${Math.round((now - at) / 60000)}m)`);
+    else if (at > horizon) lastSkips.push(`${key}:beyond24h`);
+    else out.push({ key, at, title, body: body + (defaultSound !== 'none' ? '' : ' (silent)') });
   };
 
   // Reminders
@@ -138,6 +147,9 @@ export function syncNativeAlarms(): void {
   } catch (e) {
     lastSyncStatus = 'error: ' + String(e);
   }
+  console.log('[LifeOS alarms] scheduled:', alarms.length, 'native:', lastSyncStatus,
+    alarms.length ? 'next in ' + Math.round((alarms.reduce((m, a) => Math.min(m, a.at), Infinity) - Date.now()) / 60000) + 'min' : '',
+    'skipped:', lastSkips.slice(0, 5));
 }
 
 let syncTimer: ReturnType<typeof setInterval> | null = null;
