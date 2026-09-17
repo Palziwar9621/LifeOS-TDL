@@ -1,7 +1,7 @@
 // LifeOS — Tasks page with views, filters, search, drag reorder, bulk actions
 import React, { useMemo, useState } from 'react';
 import { Icon, EmptyState, Tabs, SelectInput, useConfirm } from '../../ui/components';
-import { dbState, reorderTasks, updateTask, deleteTask, restoreTask, completeOccurrence } from '../../lib/db';
+import { dbState, reorderTasks, updateTask, deleteTask, restoreTask, completeOccurrence, toggleRoutineCompletion } from '../../lib/db';
 import { todayStr, addDays, isOverdue, diffDays } from '../../lib/dates';
 import { occurrencesBetween, occurrenceDueDate, isOccurrenceDone } from '../../lib/recurrence';
 import { PRIORITY_ORDER, PRIORITY_LABEL } from '../../lib/types';
@@ -10,9 +10,10 @@ import { TaskRow } from '../TaskRow';
 import { TaskEditor } from '../TaskEditor';
 import { QuickAddModal } from '../quickadd';
 import { RemindersPanel } from './RemindersPage';
+import { RoutinesPanel } from './ProductivityPage';
 import { useApp } from '../store';
 
-type ViewKey = 'today' | 'tomorrow' | 'upcoming' | 'inbox' | 'overdue' | 'completed' | 'all' | 'reminders';
+type ViewKey = 'today' | 'tomorrow' | 'upcoming' | 'inbox' | 'overdue' | 'completed' | 'all' | 'routines' | 'reminders';
 type SortKey = 'manual' | 'due' | 'priority' | 'created' | 'title';
 
 interface Row {
@@ -186,6 +187,7 @@ export function TasksPage() {
     { key: 'overdue', label: 'Overdue' },
     { key: 'completed', label: 'Completed' },
     { key: 'all', label: 'All' },
+    { key: 'routines', label: '🔁 Routines' },
     { key: 'reminders', label: '🔔 Reminders' },
   ];
 
@@ -211,6 +213,8 @@ export function TasksPage() {
 
       {view === 'reminders' ? (
         <div className="mt-3"><RemindersPanel /></div>
+      ) : view === 'routines' ? (
+        <div className="mt-3"><RoutinesPanel /></div>
       ) : (
       <>
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">

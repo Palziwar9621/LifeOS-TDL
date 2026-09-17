@@ -64,7 +64,7 @@ function parseDateStr(s: string): Date {
   return new Date(y, m - 1, d);
 }
 
-function BlockEditor({ block, defaultDow, onClose }: { block: ScheduleBlock | null; defaultDow?: number; onClose: () => void }) {
+export function BlockEditor({ block, defaultDow, onClose }: { block: ScheduleBlock | null; defaultDow?: number; onClose: () => void }) {
   const s = dbState();
   const { toast } = { toast: (m: string, k?: any) => console.log(m) };
   const [title, setTitle] = useState(block?.title ?? '');

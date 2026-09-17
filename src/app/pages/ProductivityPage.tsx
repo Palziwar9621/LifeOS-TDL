@@ -403,3 +403,103 @@ function RoutineEditor({ task, defaultDate, onClose }: { task: RoutineTask | nul
 // tiny helper to avoid importing the whole store context tree
 import { useApp } from '../store';
 const useAppToast = () => useApp();
+
+// ---------------------------------------------------------------------------
+// RoutinesPanel — compact standalone routine manager, reused inside the
+// Tasks page's "Routines" tab. Full editing happens in RoutineEditor;
+// the panel owns its own editor instance so it works anywhere.
+// ---------------------------------------------------------------------------
+export function RoutinesPanel() {
+  getDbVersion();
+  const s = dbState();
+  const { confirm, confirmEl } = useConfirm();
+  const today = todayStr();
+  const [viewDate, setViewDate] = useState(today);
+  const [editing, setEditing] = useState<RoutineTask | 'new' | null>(null);
+  let newTaskDay: number | null = null;
+
+  const wd = parseDateStr(viewDate).getDay();
+  const dayTasks = s.routine_tasks
+    .filter((t) => !t.archived && (taskDays(t).includes(wd) || t.extra_date === viewDate))
+    .sort((a, b) => (a.time_of_day ?? '99') < (b.time_of_day ?? '99') ? -1 : 1);
+  const isDone = (taskId: string, date: string) =>
+    s.routine_completions.some((c) => c.task_id === taskId && c.done_date === date);
+  const weekStart = startOfWeek(viewDate, 1);
+  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+
+  return (
+    <div>
+      <div className="card p-3 mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-1 flex-wrap items-center gap-1.5">
+          {weekDays.map((d) => {
+            const w = parseDateStr(d).getDay();
+            const ts = s.routine_tasks.filter((t) => !t.archived && (taskDays(t).includes(w) || t.extra_date === d));
+            const done = ts.filter((t) => isDone(t.id, d)).length;
+            const active = d === viewDate;
+            return (
+              <button key={d} onClick={() => setViewDate(d)}
+                className={`flex flex-col items-center rounded-xl px-2.5 py-1.5 transition ${active ? 'bg-brand-600 text-white shadow' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                aria-label={`${DAY_FULL[w]} ${fmtDate(d)}`}>
+                <span className={`text-[10px] font-semibold ${active ? 'text-white/80' : 'muted'}`}>{DAY_LABELS[w]}</span>
+                <span className="text-xs font-bold">{parseDateStr(d).getDate()}</span>
+                {ts.length > 0 && (
+                  <span className={`mt-0.5 h-1 w-1 rounded-full ${done === ts.length ? 'bg-emerald-500' : done > 0 ? 'bg-amber-400' : 'bg-slate-300 dark:bg-slate-600'}`} />
+                )}
+              </button>
+            );
+          })}
+        </div>
+        <button className="btn-primary btn-sm" onClick={() => setEditing('new')}>
+          <Icon name="plus" className="h-4 w-4" /> Add routine
+        </button>
+      </div>
+
+      {dayTasks.length === 0 ? (
+        <EmptyState icon="check" title="Nothing scheduled"
+          hint="Routines repeat on weekdays — like gym on Mon, Tue and Fri."
+          action={<button className="btn-primary mt-2" onClick={() => setEditing('new')}>Add your first routine</button>} />
+      ) : (
+        <div className="space-y-2">
+          {dayTasks.map((t) => {
+            const done = isDone(t.id, viewDate);
+            return (
+              <div key={t.id} className={`card p-3 flex items-center gap-3 transition ${done ? 'opacity-70' : ''}`}>
+                <button
+                  className={`h-7 w-7 shrink-0 rounded-full border-2 flex items-center justify-center transition ${done ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 dark:border-slate-600 hover:border-emerald-400'}`}
+                  onClick={() => void toggleRoutineCompletion(t.id, viewDate)}
+                  aria-label={done ? `Mark "${t.title}" not done` : `Mark "${t.title}" done`}
+                  aria-pressed={done}>
+                  {done && <Icon name="check" className="h-4 w-4" />}
+                </button>
+                <div className="min-w-0 flex-1">
+                  <p className={`font-semibold truncate ${done ? 'line-through' : ''}`}>{t.title}</p>
+                  <div className="flex items-center gap-2 text-xs muted">
+                    <span className="h-2 w-2 rounded-full shrink-0" style={{ background: t.color }} />
+                    <RoutineRepeatLabel task={t} />
+                    {t.time_of_day && <span>· {t.time_of_day.slice(0, 5)}</span>}
+                  </div>
+                </div>
+                <button className="btn-ghost btn-sm shrink-0" aria-label={`Edit ${t.title}`} onClick={() => setEditing(t)}>
+                  <Icon name="edit" className="h-4 w-4" />
+                </button>
+                <button className="btn-ghost btn-sm text-rose-500 shrink-0" aria-label={`Delete ${t.title}`}
+                  onClick={() => confirm('Delete routine task?', `"${t.title}" and its check-off history will be removed.`, () => void deleteRoutineTask(t.id))}>
+                  <Icon name="trash" className="h-4 w-4" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {editing && (
+        <RoutineEditor
+          task={editing === 'new' ? null : editing}
+          defaultDate={viewDate}
+          onClose={() => { setEditing(null); newTaskDay = null; }}
+        />
+      )}
+      {confirmEl}
+    </div>
+  );
+}

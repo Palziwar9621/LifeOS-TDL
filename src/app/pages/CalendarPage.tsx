@@ -6,6 +6,8 @@ import { todayStr, addDays, startOfWeek, parseDateStr, fmtTime, toLocalDateStr, 
 import { occurrencesBetween, isOccurrenceDone } from '../../lib/recurrence';
 import type { Task } from '../../lib/types';
 import { TaskEditor } from '../TaskEditor';
+import { BlockEditor } from './WeeklyPage';
+import type { ScheduleBlock } from '../../lib/types';
 import { useApp } from '../store';
 
 interface CalItem {
@@ -43,6 +45,7 @@ export function CalendarPage() {
   const [view, setView] = useState<'day' | 'week' | 'month'>('week');
   const [cursor, setCursor] = useState(today);
   const [editing, setEditing] = useState<Task | null>(null);
+  const [editingBlock, setEditingBlock] = useState<ScheduleBlock | null>(null);
   const [filters, setFilters] = useState<Set<CalFilter>>(loadFilters);
 
   const toggleFilter = (f: CalFilter) => {
@@ -174,11 +177,12 @@ export function CalendarPage() {
         <button className="btn-ghost btn-sm" onClick={() => move(1)} aria-label="Next"><Icon name="chevronR" className="h-4 w-4" /></button>
       </div>
 
-      {view === 'day' && <DayView date={cursor} items={itemsByDate.get(cursor) ?? []} onEdit={setEditing} />}
-      {view === 'week' && <WeekView cursor={cursor} itemsByDate={itemsByDate} onEdit={setEditing} />}
+      {view === 'day' && <DayView date={cursor} items={itemsByDate.get(cursor) ?? []} onEdit={setEditing} onEditBlock={setEditingBlock} />}
+      {view === 'week' && <WeekView cursor={cursor} itemsByDate={itemsByDate} onEdit={setEditing} onEditBlock={setEditingBlock} />}
       {view === 'month' && <MonthView cursor={cursor} today={today} itemsByDate={itemsByDate} onPick={(d) => { setCursor(d); setView('day'); }} />}
 
       <TaskEditor task={editing} onClose={() => setEditing(null)} />
+      <BlockEditor block={editingBlock} onClose={() => setEditingBlock(null)} />
     </div>
   );
 }
@@ -192,12 +196,21 @@ function fmtShort(s: string) {
   return parseDateStr(s).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-function ItemChip({ item, onEdit }: { item: CalItem; onEdit: (t: Task) => void }) {
+function ItemChip({ item, onEdit, onEditBlock }: { item: CalItem; onEdit: (t: Task) => void; onEditBlock?: (b: ScheduleBlock) => void }) {
   return (
     <button
       className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1 text-left text-xs font-medium text-white/95 transition hover:brightness-110"
       style={{ background: item.color }}
-      onClick={() => item.task && onEdit(item.task)}
+      onClick={() => {
+        if (item.kind === 'block') {
+          if (onEditBlock) {
+            const b = dbState().schedule_blocks.find((x) => x.id === item.id);
+            if (b) onEditBlock(b);
+          }
+        } else if (item.task) {
+          onEdit(item.task);
+        }
+      }}
       title={item.title}
     >
       <span className="shrink-0">{item.kind === 'block' ? '🕐' : item.kind === 'reminder' ? '🔔' : item.kind === 'milestone' ? '⚑' : '✓'}</span>
@@ -206,20 +219,20 @@ function ItemChip({ item, onEdit }: { item: CalItem; onEdit: (t: Task) => void }
   );
 }
 
-function DayView({ date, items, onEdit }: { date: string; items: CalItem[]; onEdit: (t: Task) => void }) {
+function DayView({ date, items, onEdit, onEditBlock }: { date: string; items: CalItem[]; onEdit: (t: Task) => void; onEditBlock?: (b: ScheduleBlock) => void }) {
   return (
     <div className="card p-5">
       <h2 className="mb-3 font-bold">{parseDateStr(date).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</h2>
       {items.length === 0 ? <EmptyState icon="calendar" title="Nothing planned" hint="This day is wide open." /> : (
         <div className="space-y-1.5">
-          {items.map((i) => <ItemChip key={i.kind + i.id} item={i} onEdit={onEdit} />)}
+          {items.map((i) => <ItemChip key={i.kind + i.id} item={i} onEdit={onEdit} onEditBlock={onEditBlock} />)}
         </div>
       )}
     </div>
   );
 }
 
-function WeekView({ cursor, itemsByDate, onEdit }: { cursor: string; itemsByDate: Map<string, CalItem[]>; onEdit: (t: Task) => void }) {
+function WeekView({ cursor, itemsByDate, onEdit, onEditBlock }: { cursor: string; itemsByDate: Map<string, CalItem[]>; onEdit: (t: Task) => void; onEditBlock?: (b: ScheduleBlock) => void }) {
   const start = startOfWeek(cursor, 1);
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
   const names = weekdayShort(1);
@@ -229,7 +242,7 @@ function WeekView({ cursor, itemsByDate, onEdit }: { cursor: string; itemsByDate
         <div key={d} className={`card min-h-36 p-2.5 ${d === todayStr() ? 'ring-2 ring-brand-500' : ''}`}>
           <p className="mb-2 text-center text-xs font-bold uppercase tracking-wide muted">{names[i]} {fmtShort(d).split(' ')[1]}</p>
           <div className="space-y-1">
-            {(itemsByDate.get(d) ?? []).slice(0, 6).map((it) => <ItemChip key={it.kind + it.id} item={it} onEdit={onEdit} />)}
+            {(itemsByDate.get(d) ?? []).slice(0, 6).map((it) => <ItemChip key={it.kind + it.id} item={it} onEdit={onEdit} onEditBlock={onEditBlock} />)}
             {(itemsByDate.get(d) ?? []).length > 6 && (
               <p className="text-center text-[10px] muted">+{(itemsByDate.get(d) ?? []).length - 6} more</p>
             )}
@@ -241,6 +254,7 @@ function WeekView({ cursor, itemsByDate, onEdit }: { cursor: string; itemsByDate
 }
 
 function MonthView({ cursor, today, itemsByDate, onPick }: { cursor: string; today: string; itemsByDate: Map<string, CalItem[]>; onPick: (d: string) => void }) {
+  // Month view shows color bars only; editing blocks happens in day/week view.
   const [y, m] = cursor.split('-').map(Number);
   const first = new Date(y, m - 1, 1);
   const startOffset = (first.getDay() + 6) % 7; // Monday-first
