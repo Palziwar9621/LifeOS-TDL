@@ -8,9 +8,10 @@
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
-    <!-- setAlarmClock() needs USE_EXACT_ALARM only on Android 13+; harmless below.
-         RECEIVE_BOOT_COMPLETED re-schedules alarms after reboot. -->
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
+    <!-- SCHEDULE_EXACT_ALARM (not USE_EXACT_ALARM): user-grantable, so the app
+         SHOWS in Settings → Apps → LifeOS → Alarms & reminders and can be
+         granted explicitly. setAlarmClock() works with either. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
 

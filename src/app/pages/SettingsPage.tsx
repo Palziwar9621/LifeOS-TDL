@@ -1,5 +1,5 @@
 // LifeOS — Settings
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Icon, useConfirm } from '../../ui/components';
 import { dbState, getSettings, updateSettings, createCategory, updateCategory, deleteCategory, createTag, deleteTag, updateProfile, getProfile, pull, createProject, createGoal, createNote, createIdea, createRememberItem, getLastSyncError, getUnsyncedCount, retryParked } from '../../lib/db';
 import { useApp } from '../store';
@@ -150,6 +150,45 @@ function NotificationsSection({ toast }: any) {
   );
 }
 
+/** Android shell: show the real exact-alarm permission state with a one-tap
+ * fix — opens the system "Alarms & reminders" grant screen when missing. */
+function ExactAlarmCard() {
+  const native = (window as any).LifeOSNative;
+  const supported = !!native?.canScheduleExact;
+  const [granted, setGranted] = useState<boolean | null>(
+    supported ? !!native.canScheduleExact() : null,
+  );
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === 'visible' && supported) setGranted(!!native.canScheduleExact());
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [supported]);
+  if (!supported) return null;
+  if (granted) {
+    return (
+      <p className="mt-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+        ✓ Exact alarms granted — this app is listed in Android's "Alarms & reminders" for LifeOS.
+      </p>
+    );
+  }
+  return (
+    <div className="mt-2 rounded-xl border border-amber-400/50 bg-amber-50 p-3 dark:bg-amber-950/30">
+      <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">
+        Exact alarm permission missing — alarms may not ring with the app closed.
+      </p>
+      <button
+        className="btn-primary mt-2 !py-1.5 text-xs"
+        onClick={() => native.openExactAlarmSettings()}
+      >
+        Grant exact alarm permission
+      </button>
+      <p className="mt-1 text-[11px] muted">Toggles "Alarms &amp; reminders" on for LifeOS — come back and this turns green.</p>
+    </div>
+  );
+}
+
 function PushAlarmsCard({ toast }: any) {
   const supported = pushSupported();
   const env = pushEnvironment();
@@ -162,6 +201,7 @@ function PushAlarmsCard({ toast }: any) {
     return (
       <div>
         <p className="text-sm font-semibold">Alarms with the app closed</p>
+        {env === 'android-shell' && <ExactAlarmCard />}
         <p className="mt-2 text-xs muted">
           {env === 'android-shell'
             ? '✓ This app schedules alarms natively (Android AlarmManager) — reminders, task alerts and routines ring with full sound + vibration even when the app is closed or the phone restarted. No web-push setup needed here. (Web push is only for browsers.)'
