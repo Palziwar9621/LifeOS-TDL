@@ -6,6 +6,7 @@ import { useApp } from '../store';
 import { todayStr } from '../../lib/dates';
 import { exportAllJson, downloadJson, tasksCsv, parseBackupJson, readFileText } from '../../lib/backup';
 import { requestNotificationPermission, notificationPermission } from '../../lib/notifications';
+import { enablePush, disablePush, pushSupported, pushPermission, sendTestPush } from '../../lib/push';
 import { AlarmSoundPicker } from '../AlarmSoundPicker';
 import { updateUserPassword } from '../../lib/auth';
 import { getClient, loadSupabaseConfig } from '../../lib/supabase';
@@ -142,7 +143,68 @@ function NotificationsSection({ toast }: any) {
       <p className="text-xs muted">
         Permission: <b>{perm === 'granted' ? 'granted ✓' : perm === 'denied' ? 'blocked ✕ (enable in browser site settings)' : 'not asked yet'}</b>
       </p>
+      <div className="divider my-3" />
+      <PushAlarmsCard toast={toast} />
     </section>
+  );
+}
+
+function PushAlarmsCard({ toast }: any) {
+  const supported = pushSupported();
+  const [perm, setPerm] = useState(pushPermission());
+  const [busy, setBusy] = useState(false);
+
+  const enable = async () => {
+    setBusy(true);
+    const res = await enablePush();
+    setPerm(pushPermission());
+    setBusy(false);
+    if (res.ok) toast('Push alarms enabled on this device 🔔', 'success');
+    else toast(res.error ?? 'Could not enable push', 'error');
+  };
+
+  if (!supported) {
+    return (
+      <p className="text-xs muted">
+        Background alarms need web push, which this browser doesn't support. In-app alarms still work while LifeOS is open.
+      </p>
+    );
+  }
+
+  return (
+    <div>
+      <p className="text-sm font-semibold">Alarms with the app closed</p>
+      <p className="mb-2 text-xs muted">
+        Subscribe this device so reminders, task alerts and routines ring even when LifeOS and the browser are closed.
+        You'll get a full-screen notification with vibration; the system notification sound plays (a LifeOS tone plays too once you tap it and the app opens).
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <button className="btn-primary" disabled={busy || perm === 'denied'} onClick={() => void enable()}>
+          <Icon name="bell" className="h-4 w-4" />
+          {perm === 'granted' ? 'Re-subscribe this device' : 'Enable background alarms'}
+        </button>
+        <button className="btn-secondary" disabled={busy} onClick={async () => {
+          setBusy(true);
+          const r = await sendTestPush();
+          setBusy(false);
+          if (r.ok) toast('Test push sent — check your notifications', 'success');
+          else toast(r.error ?? 'Test failed', 'error');
+        }}>
+          Send test alarm
+        </button>
+        {perm === 'granted' && (
+          <button className="btn-ghost btn-sm text-rose-500" disabled={busy} onClick={async () => {
+            setBusy(true); await disablePush(); setPerm(pushPermission()); setBusy(false);
+            toast('This device unsubscribed from background alarms');
+          }}>Unsubscribe</button>
+        )}
+      </div>
+      {perm === 'denied' && (
+        <p className="mt-2 text-xs text-rose-600 dark:text-rose-300">
+          Notifications are blocked for this site. Open the lock icon in the address bar → Notifications → Allow, then re-subscribe.
+        </p>
+      )}
+    </div>
   );
 }
 

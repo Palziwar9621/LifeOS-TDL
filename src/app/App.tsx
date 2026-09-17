@@ -22,6 +22,9 @@ import { SearchPage } from './pages/SearchPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { Spinner } from '../ui/components';
 import { setReminderClickHandler, setTaskClickHandler } from '../lib/notifications';
+import { startAlarm as ringAlarm, getDefaultAlarmSound, snoozeAlarm } from '../lib/alarm';
+import { onWorkerMessage } from '../lib/push';
+import { AlarmOverlay } from './AlarmOverlay';
 import { useEffect } from 'react';
 
 export function App() {
@@ -31,6 +34,25 @@ export function App() {
   useEffect(() => {
     setReminderClickHandler(() => navigate('reminders'));
     setTaskClickHandler((t) => navigate('tasks', { view: 'today' }));
+    // A push that arrives while the app is open also rings the in-app alarm
+    // (WebAudio is louder than the OS notification sound).
+    const off = onWorkerMessage({
+      alarm: (m) => ringAlarm(m.key, getDefaultAlarmSound(), { title: m.title, body: m.body }),
+      dismiss: (_m) => { /* notification dismissed from the push itself */ },
+      snooze: (_m) => snoozeAlarm(10),
+    });
+    // Snooze requested from a push notification while the app was closed.
+    try {
+      const q = new URLSearchParams(window.location.search);
+      const sk = q.get('lifeos-snooze');
+      if (sk) {
+        snoozeAlarm(parseInt(q.get('min') ?? '10', 10) || 10);
+        q.delete('lifeos-snooze'); q.delete('min');
+        const clean = window.location.pathname + (q.toString() ? '?' + q.toString() : '');
+        window.history.replaceState({}, '', clean);
+      }
+    } catch { /* ignore */ }
+    return off;
   }, [navigate]);
 
   if (!configured) return <SetupScreen onConfigured={() => window.location.reload()} />;
@@ -42,6 +64,7 @@ export function App() {
   return (
     <Shell>
       <PageRouter />
+      <AlarmOverlay />
     </Shell>
   );
 }

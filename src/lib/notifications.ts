@@ -82,7 +82,7 @@ export function startReminderScheduler() {
             r.id + ':' + (r.snoozed_until ?? r.due_at),
             () => clickHandler?.(r),
           );
-          if (!wasDismissed(key)) startAlarm(key, defaultSound as any);
+          if (!wasDismissed(key)) startAlarm(key, defaultSound as any, { title: r.title, body: r.notes ?? 'Reminder' });
           void updateReminder(r.id, { fired_at: new Date().toISOString() } as any);
         }
       }
@@ -97,7 +97,7 @@ export function startReminderScheduler() {
         if (fireMs <= now && now - fireMs < 60000 * 60 * 12 && !notified.has(key)) {
           notified.add(key);
           show('⏰ Task due soon', t.title, t.id + ':' + t.due_date, () => taskClickHandler?.(t));
-          if (!wasDismissed(key)) startAlarm(key, defaultSound as any);
+          if (!wasDismissed(key)) startAlarm(key, defaultSound as any, { title: t.title, body: 'Task due soon' });
         }
       }
 
@@ -115,7 +115,7 @@ export function startReminderScheduler() {
         if (fireAt <= now && now - fireAt < 60000 * 60 * 2 && !notified.has(key)) {
           notified.add(key);
           show('⏰ Routine time', rt.title, rt.id + ':' + today);
-          if (!wasDismissed(key)) startAlarm(key, defaultSound as any);
+          if (!wasDismissed(key)) startAlarm(key, defaultSound as any, { title: rt.title, body: 'Routine time' });
         }
         void fireMs;
       }
