@@ -32,6 +32,20 @@ export function pushSupported(): boolean {
     typeof Notification !== 'undefined';
 }
 
+/**
+ * Which runtime are we in? Web push only works in real browsers — the
+ * Android WebView shell and Electron have no push service, and attempting
+ * to subscribe there fails with "push service not available".
+ */
+export type PushEnvironment = 'browser' | 'android-shell' | 'electron';
+export function pushEnvironment(): PushEnvironment {
+  if (typeof navigator === 'undefined') return 'browser';
+  const ua = navigator.userAgent;
+  if (ua.includes('LifeOSNative')) return 'android-shell';
+  if (ua.includes('Electron')) return 'electron';
+  return 'browser';
+}
+
 export function pushPermission(): NotificationPermission | 'unsupported' {
   if (!pushSupported()) return 'unsupported';
   return Notification.permission;

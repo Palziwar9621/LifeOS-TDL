@@ -6,7 +6,7 @@ import { useApp } from '../store';
 import { todayStr } from '../../lib/dates';
 import { exportAllJson, downloadJson, tasksCsv, parseBackupJson, readFileText } from '../../lib/backup';
 import { requestNotificationPermission, notificationPermission } from '../../lib/notifications';
-import { enablePush, disablePush, pushSupported, pushPermission, sendTestPush } from '../../lib/push';
+import { enablePush, disablePush, pushSupported, pushPermission, sendTestPush, pushEnvironment } from '../../lib/push';
 import { AlarmSoundPicker } from '../AlarmSoundPicker';
 import { updateUserPassword } from '../../lib/auth';
 import { getClient, loadSupabaseConfig } from '../../lib/supabase';
@@ -151,8 +151,24 @@ function NotificationsSection({ toast }: any) {
 
 function PushAlarmsCard({ toast }: any) {
   const supported = pushSupported();
+  const env = pushEnvironment();
   const [perm, setPerm] = useState(pushPermission());
   const [busy, setBusy] = useState(false);
+
+  // The installed apps (Android shell / Electron) have no push service —
+  // web push only works in real browsers. Be honest instead of failing.
+  if (env !== 'browser') {
+    return (
+      <div>
+        <p className="text-sm font-semibold">Alarms with the app closed</p>
+        <p className="mt-2 text-xs muted">
+          {env === 'android-shell'
+            ? 'The LifeOS Android app cannot receive push alarms (Android limitation for in-app browsers). To get alarms when everything is closed, open life-os-tdl.vercel.app in Chrome on your phone → Settings → Notifications → Enable background alarms. Chrome will ring even when closed. In-app alarms still work here while the app is open.'
+            : 'The LifeOS Windows app cannot receive push alarms. To get alarms when everything is closed, open life-os-tdl.vercel.app in Chrome or Edge → Settings → Notifications → Enable background alarms. In-app alarms still work here while the app is open.'}
+        </p>
+      </div>
+    );
+  }
 
   const enable = async () => {
     setBusy(true);
