@@ -11,6 +11,7 @@ import android.view.View;
 import android.view.animation.Animation;
 import android.view.animation.AnimationUtils;
 import android.view.Window;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -52,28 +53,34 @@ public class MainActivity extends Activity {
         web = findViewById(R.id.webview);
         splash = findViewById(R.id.splash);
 
-        // Pull-to-refresh: only when the page's inner scroll container is at
-        // the very top. The app scrolls inside <main> (WebView scrollY is
-        // always 0), so we ask it — and also watch any scrolled element.
-        androidx.swiperefreshlayout.widget.SwipeRefreshLayout swipe = findViewById(R.id.swipe);
+        // Pull-to-refresh: only when the page's inner scroll container (the
+        // app scrolls inside <main>; WebView scrollY stays 0) is at the top.
+        // TopAwareSwipeRefreshLayout consults canChildScrollUp() synchronously
+        // at gesture start — the page pushes its scroll state here via the
+        // bridge on every scroll (see TopAwareSwipeRefreshLayout docs).
+        TopAwareSwipeRefreshLayout swipe = findViewById(R.id.swipe);
         swipe.setOnRefreshListener(() -> {
             web.reload();
             new Handler(Looper.getMainLooper()).postDelayed(() -> swipe.setRefreshing(false), 1500);
         });
-        // Evaluate "at top" via JS over the real scroll containers.
-        final android.os.Handler ui = new Handler(Looper.getMainLooper());
-        final Runnable evalTop = new Runnable() {
-            @Override public void run() {
-                web.evaluateJavascript(
-                    "(function(){var els=document.querySelectorAll('main,div,section');" +
-                    "for(var i=0;i<els.length;i++){var e=els[i];" +
-                    "if(e.scrollHeight>e.clientHeight+4&&e.scrollTop>4)return 'false';}" +
-                    "return String(window.scrollY>4||document.documentElement.scrollTop>4);})()",
-                    v -> swipe.setEnabled(!"\"false\"".equals(v)));
+        web.addJavascriptInterface(new Object() {
+            @JavascriptInterface
+            public void setScrolled(final boolean scrolled) {
+                runOnUiThread(() -> swipe.setPageScrolled(scrolled));
             }
-        };
-        web.getViewTreeObserver().addOnScrollChangedListener(evalTop::run);
-        evalTop.run();
+        }, "LifeOSScroll");
+        web.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                view.evaluateJavascript(
+                    "(function(){var f=function(){var els=document.querySelectorAll('main,.overflow-y-auto,[class*=overflow-y-auto]');" +
+                    "for(var i=0;i<els.length;i++){var e=els[i];" +
+                    "if(e.scrollHeight>e.clientHeight+4&&e.scrollTop>4){window.LifeOSScroll&&LifeOSScroll.setScrolled(true);return;}}" +
+                    "window.LifeOSScroll&&LifeOSScroll.setScrolled(false);};" +
+                    "window.addEventListener('scroll',f,true);f();})();", null);
+            }
+        });
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -109,12 +116,7 @@ public class MainActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 hideSplash();
-                // Ask for the notification permission once, AFTER the page is
-                // loaded and touchable — never from onCreate (touch-freeze bug).
-                if (!askedNotif && Build.VERSION.SDK_INT >= 33) {
-                    askedNotif = true;
-                    requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1001);
-                }
+                maybeAskNotifPermission();
             }
 
             @Override
@@ -132,6 +134,21 @@ public class MainActivity extends Activity {
         new Handler(Looper.getMainLooper()).postDelayed(this::hideSplash, 12_000);
 
         web.loadUrl("https://life-os-tdl.vercel.app/");
+    }
+
+    /**
+     * Ask for the notification permission if not already granted — retried
+     * on every page load until granted (a dismissed system prompt used to
+     * leave the app permanently silent). Only after the page is touchable,
+     * never from onCreate (touch-freeze bug).
+     */
+    private void maybeAskNotifPermission() {
+        if (Build.VERSION.SDK_INT < 33) return;
+        if (checkSelfPermission("android.permission.POST_NOTIFICATIONS")
+                == android.content.pm.PackageManager.PERMISSION_GRANTED) return;
+        if (askedNotif) return; // once per app-open; re-ask next launch
+        askedNotif = true;
+        requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1001);
     }
 
     /**
