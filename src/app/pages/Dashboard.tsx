@@ -16,6 +16,17 @@ export function Dashboard() {
   const today = todayStr();
   const [editing, setEditing] = useState<Task | null>(null);
   const [quickKind, setQuickKind] = useState<null | 'task' | 'note' | 'reminder' | 'project' | 'goal'>(null);
+  // Subtle "get the app" pill in the hero — hidden forever once dismissed,
+  // or when running as an installed app already.
+  const [showAppBtn, setShowAppBtn] = useState(() =>
+    !localStorage.getItem('lifeos.appBtnDismissed') &&
+    !window.matchMedia('(display-mode: standalone)').matches &&
+    !(window.navigator as any).standalone
+  );
+  const dismissAppBtn = () => {
+    setShowAppBtn(false);
+    localStorage.setItem('lifeos.appBtnDismissed', '1');
+  };
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
@@ -69,7 +80,18 @@ export function Dashboard() {
     <div className="space-y-6">
       {/* Hero */}
       <section className="card overflow-hidden">
-        <div className="bg-gradient-to-r from-brand-600 to-violet-600 p-6 text-white md:p-8">
+        <div className="relative bg-gradient-to-r from-brand-600 to-violet-600 p-6 text-white md:p-8">
+          {showAppBtn && (
+            <div className="absolute right-3 top-3 flex items-center gap-1 rounded-full bg-white/15 px-1 py-1 backdrop-blur-sm">
+              <a href="/download.html" target="_blank" rel="noreferrer"
+                className="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold text-white transition hover:bg-white/25"
+                title="Get LifeOS on Windows & Android">
+                📲 Get the app
+              </a>
+              <button onClick={dismissAppBtn} aria-label="Dismiss"
+                className="flex h-6 w-6 items-center justify-center rounded-full text-white/70 transition hover:bg-white/15 hover:text-white">✕</button>
+            </div>
+          )}
           <p className="text-sm font-medium text-white/80">{greeting}{name ? ', ' + name : ''} — {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</p>
           <h1 className="mt-1 text-2xl font-extrabold tracking-tight md:text-3xl">
             {totalToday === 0 ? 'A clear day ahead.' : remaining === 0 && totalToday > 0 ? 'All done for today 🎉' : `${remaining} task${remaining === 1 ? '' : 's'} to go`}
