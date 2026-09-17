@@ -73,6 +73,11 @@ export function startReminderScheduler() {
       const today = todayStr();
       void syncDismissals(); // throttled; keeps cross-device silencing fresh
       const s = dbState();
+      // Wait until settings have actually loaded (local cache or network).
+      // Cold start + empty cache: alert_mode would read as the 'notify'
+      // default, the alarm overlay would never show, and the key would be
+      // consumed as "already notified" — silently dead until the next day.
+      if (!s.user_settings) return;
       const defaultSound = (getSettings().data as any)?.alarm_sound as string | undefined;
 
       for (const r of s.reminders) {
