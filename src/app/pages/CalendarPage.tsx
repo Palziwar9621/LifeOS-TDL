@@ -182,7 +182,7 @@ export function CalendarPage() {
       {view === 'month' && <MonthView cursor={cursor} today={today} itemsByDate={itemsByDate} onPick={(d) => { setCursor(d); setView('day'); }} />}
 
       <TaskEditor task={editing} onClose={() => setEditing(null)} />
-      <BlockEditor block={editingBlock} onClose={() => setEditingBlock(null)} />
+      {editingBlock && <BlockEditor block={editingBlock} onClose={() => setEditingBlock(null)} />}
     </div>
   );
 }
