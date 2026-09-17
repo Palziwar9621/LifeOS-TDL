@@ -5,8 +5,13 @@
 import { getClient } from './supabase';
 import { currentUserId } from './db';
 
+// VAPID public key — hardcoded fallback so push works with zero Vercel env
+// config; VITE_VAPID_PUBLIC_KEY still overrides if set.
+const BAKED_VAPID_PUBLIC_KEY = 'BLHnWzFTr7eiXJBkMsgpg8Mn7QAaXjwZzJfMEEcWy4GaMm_w-p4akbUja1aUZ69G85fcAQDnzowoVgmGOatpY54';
+
 const VAPID_PUBLIC_KEY =
   (import.meta as any).env?.VITE_VAPID_PUBLIC_KEY ||
+  BAKED_VAPID_PUBLIC_KEY ||
   (typeof localStorage !== 'undefined' ? localStorage.getItem('lifeos.vapidPublic') || '' : '');
 
 const SUB_TABLE = 'push_subscriptions';
