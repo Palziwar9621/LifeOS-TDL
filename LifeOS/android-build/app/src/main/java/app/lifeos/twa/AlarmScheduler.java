@@ -5,16 +5,17 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.os.Build;
+import android.net.Uri;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
  * Receives the web app's upcoming-alarm list through the JS bridge and
- * schedules each one with AlarmManager (exact alarms, so they ring at the
- * right minute even when the app process is dead). The full list is also
- * persisted so BootReceiver can re-schedule everything after a reboot.
+ * schedules each one with AlarmManager.setAlarmClock() — that API is
+ * guaranteed to fire at the exact minute (even in Doze) and needs no
+ * special permission on Android 12+. The list is persisted so BootReceiver
+ * can re-schedule everything after a reboot.
  */
 public class AlarmScheduler {
 
@@ -58,15 +59,7 @@ public class AlarmScheduler {
                         .putString("sound", root.optString("sound", "chime"))
                         .apply();
 
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !am.canScheduleExactAlarms()) {
-                    // Permission not granted (rare; we request it in MainActivity) —
-                    // inexact is better than nothing.
-                    am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending(ctx, key));
-                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending(ctx, key));
-                } else {
-                    am.setExact(AlarmManager.RTC_WAKEUP, at, pending(ctx, key));
-                }
+                scheduleExact(ctx, am, key, at);
                 if (scheduledKeys.length() > 0) scheduledKeys.append(',');
                 scheduledKeys.append(key);
             }
@@ -74,6 +67,28 @@ public class AlarmScheduler {
         } catch (Exception ignored) {
             // Never crash the shell from bad JS input.
         }
+    }
+
+    /** One-off alarm used by the notification's Snooze action. */
+    public static void snooze(Context ctx, String key, int minutes) {
+        try {
+            AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
+            if (am == null) return;
+            long at = System.currentTimeMillis() + minutes * 60_000L;
+            scheduleExact(ctx, am, key, at);
+        } catch (Exception ignored) {}
+    }
+
+    /** setAlarmClock(): always exact, fires in Doze, no SCHEDULE_EXACT_ALARM needed. */
+    private static void scheduleExact(Context ctx, AlarmManager am, String key, long at) {
+        am.setAlarmClock(new AlarmManager.AlarmClockInfo(at, openApp(ctx)), pending(ctx, key));
+    }
+
+    private static PendingIntent openApp(Context ctx) {
+        Intent open = ctx.getPackageManager().getLaunchIntentForPackage(ctx.getPackageName());
+        if (open == null) open = new Intent(ctx, MainActivity.class);
+        return PendingIntent.getActivity(ctx, 900001, open,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
     /** Re-schedule everything from the persisted snapshot (called after boot). */

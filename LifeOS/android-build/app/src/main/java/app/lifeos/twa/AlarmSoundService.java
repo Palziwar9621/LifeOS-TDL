@@ -15,18 +15,15 @@ import android.os.VibrationEffect;
 import android.os.Vibrator;
 
 /**
- * Plays the alarm sound in a loop + vibrates until stopped (dismiss/open)
- * with a hard 3-minute cap, mirroring the in-app alarm engine's behavior.
- * Started from AlarmReceiver; runs while the app itself is closed.
+ * Plays the alarm sound in a loop + vibrates until the user dismisses,
+ * snoozes, or opens the app. No time cap — the alarm keeps going until
+ * acted on, mirroring the in-app alarm engine.
  */
 public class AlarmSoundService extends Service {
 
     private static MediaPlayer player;
     private static Vibrator vibrator;
     private static final Handler handler = new Handler(Looper.getMainLooper());
-    private static final long CAP_MS = 3 * 60 * 1000;
-
-    private static final Runnable stopper = () -> stopInternal();
 
     public static void start(Context ctx, int notifId, String soundId) {
         stopInternal(); // one alarm at a time
@@ -52,7 +49,6 @@ public class AlarmSoundService extends Service {
                     vibrator.vibrate(pattern, 0);
                 }
             }
-            handler.postDelayed(stopper, CAP_MS);
         } catch (Exception ignored) {
         }
     }
@@ -62,7 +58,6 @@ public class AlarmSoundService extends Service {
     }
 
     private static void stopInternal() {
-        handler.removeCallbacks(stopper);
         try { if (player != null) { player.stop(); player.release(); } } catch (Exception ignored) {}
         player = null;
         try { if (vibrator != null) vibrator.cancel(); } catch (Exception ignored) {}
@@ -74,7 +69,6 @@ public class AlarmSoundService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        // Keep the process alive briefly; actual playback is static/global.
         return START_NOT_STICKY;
     }
 }

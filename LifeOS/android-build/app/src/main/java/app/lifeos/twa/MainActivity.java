@@ -25,11 +25,17 @@ import android.webkit.PermissionRequest;
  * until the site finishes loading, then fades out over 300ms. Unlike a TWA,
  * everything runs in this app's own process: always standalone, no Chrome,
  * no verification, no URL bar.
+ *
+ * Touch-input rule: NEVER launch another activity or system dialog from
+ * onCreate — a permission/settings screen stealing focus before the WebView
+ * is attached leaves touch dead after returning. All prompts happen after
+ * the page has fully loaded, once.
  */
 public class MainActivity extends Activity {
     private WebView web;
     private View splash;
     private boolean splashGone = false;
+    private boolean askedNotif = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -72,21 +78,6 @@ public class MainActivity extends Activity {
         // natively via AlarmManager even when this app is closed.
         web.addJavascriptInterface(new AlarmBridge(this), "LifeOSNative");
 
-        // Exact-alarm permission (Android 12+): needed for alarms to fire at
-        // the precise minute. Sends the user to system settings once.
-        android.app.AlarmManager am = (android.app.AlarmManager) getSystemService(ALARM_SERVICE);
-        if (am != null && Build.VERSION.SDK_INT >= 31 && !am.canScheduleExactAlarms()) {
-            try {
-                startActivity(new Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
-                        android.net.Uri.parse("package:" + getPackageName())));
-            } catch (Exception ignored) {}
-        }
-
-        // Ask for notification permission on Android 13+ (POST_NOTIFICATIONS).
-        if (Build.VERSION.SDK_INT >= 33) {
-            requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1001);
-        }
-
         // Gentle pulse on the logo while loading.
         View logo = findViewById(R.id.splash_logo);
         Animation pulse = AnimationUtils.loadAnimation(this, R.anim.pulse);
@@ -105,6 +96,12 @@ public class MainActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 hideSplash();
+                // Ask for the notification permission once, AFTER the page is
+                // loaded and touchable — never from onCreate (touch-freeze bug).
+                if (!askedNotif && Build.VERSION.SDK_INT >= 33) {
+                    askedNotif = true;
+                    requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1001);
+                }
             }
 
             @Override
@@ -112,7 +109,7 @@ public class MainActivity extends Activity {
                 android.net.Uri u = req.getUrl();
                 if ("life-os-tdl.vercel.app".equals(u.getHost())) return false; // in-app
                 try {
-                    startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW, u));
+                    startActivity(new Intent(Intent.ACTION_VIEW, u));
                 } catch (Exception ignored) {}
                 return true;
             }
@@ -137,6 +134,7 @@ public class MainActivity extends Activity {
         });
         splash.startAnimation(fade);
     }
+
 
     @Override
     protected void onPause() {
