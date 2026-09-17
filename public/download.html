@@ -57,6 +57,10 @@
       <h2>🤖 Android</h2>
       <p>Installs like a normal app: own icon, full screen, offline support, and background alarms once push is enabled.</p>
       <button class="btn" id="pwaInstall" disabled>📲 Install app</button>
+      <p id="pwaHint" style="display:none; margin:10px 0 0; font-size:.72rem; opacity:.75;">
+        No install prompt available — you either already have LifeOS installed (👍 you're set),
+        or this browser can't install PWAs. APK download below works everywhere.
+      </p>
       <p id="pwaDone">✓ Installed! Find LifeOS in your app drawer.</p>
       <a class="btn ghost" href="https://github.com/Palziwar9621/LifeOS-TDL/releases/latest/download/LifeOS.apk">⬇ Download APK</a>
       <p style="margin:10px 0 0; font-size:.72rem;">APK: after download, tap it and allow "Install unknown apps" if asked.</p>
@@ -87,9 +91,16 @@
     if (outcome === 'accepted') { done.style.display = 'block'; btn.style.display = 'none'; }
     deferred = null;
   });
-  // Already installed?
+  // Already installed (standalone display)? Then say so and hide the button.
   if (window.matchMedia('(display-mode: standalone)').matches) {
     done.style.display = 'block'; btn.style.display = 'none';
+  } else {
+    // If Chrome hasn't offered the install after 4s, explain why it's greyed.
+    setTimeout(() => {
+      if (!deferred && btn.style.display !== 'none') {
+        document.getElementById('pwaHint').style.display = 'block';
+      }
+    }, 4000);
   }
 </script>
 </body>
