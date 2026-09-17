@@ -252,9 +252,13 @@ Deno.serve(async (req) => {
 });
 
 async function handle(req: Request): Promise<Response> {
-  const auth = req.headers.get('Authorization') ?? '';
-  const adminKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const supabase = createAdminClient(Deno.env.get('SUPABASE_URL')!, adminKey);
+  // Newer Supabase runtimes don't auto-inject these — fall back to explicit
+  // secrets set via `supabase secrets set`.
+  const projectUrl = Deno.env.get('SUPABASE_URL') ?? Deno.env.get('PROJECT_URL') ?? '';
+  const adminKey = Deno.env.get('SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  if (!projectUrl) return new Response(JSON.stringify({ error: 'SUPABASE_URL/PROJECT_URL secret not set' }), { status: 500 });
+  if (!adminKey) return new Response(JSON.stringify({ error: 'SERVICE_ROLE_KEY/SUPABASE_SERVICE_ROLE_KEY secret not set' }), { status: 500 });
+  const supabase = createAdminClient(projectUrl, adminKey);
 
   let body: any = {};
   try { body = await req.json(); } catch { /* empty ok */ }
@@ -270,7 +274,7 @@ async function handle(req: Request): Promise<Response> {
   const isService = token === adminKey;
   if (!isService) {
     // Verify the user's JWT via the Auth server REST endpoint.
-    const uRes = await fetch(`${Deno.env.get('SUPABASE_URL')}/auth/v1/user`, {
+    const uRes = await fetch(`${projectUrl}/auth/v1/user`, {
       headers: { apikey: Deno.env.get('SUPABASE_ANON_KEY') ?? adminKey, Authorization: `Bearer ${token}` },
     });
     if (!uRes.ok) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
