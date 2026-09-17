@@ -62,4 +62,18 @@ public class AlarmBridge {
             } catch (Exception ignored) { /* some devices lack the screen */ }
         }
     }
+
+    /** Alert mode for routine/task times: "notify" (silent notification) or
+     * "alarm" (full alarm). The web app's Settings toggle feeds this. */
+    @JavascriptInterface
+    public void setAlertMode(String mode) {
+        NotifHelper.setAlertMode(ctx, "alarm".equals(mode) ? "alarm" : "notify");
+    }
+
+    /** Show a silent notification right away (web-driven, for alerts while
+     * the app is open — the WebView has no web Notification API). */
+    @JavascriptInterface
+    public void notify(String key, String title, String body) {
+        NotifHelper.show(ctx, key, title, body);
+    }
 }

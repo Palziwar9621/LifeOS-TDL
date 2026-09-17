@@ -52,6 +52,15 @@ public class AlarmReceiver extends BroadcastReceiver {
         String title = prefs.getString("alarm:" + key + ":title", "⏰ LifeOS alarm");
         String body = prefs.getString("alarm:" + key + ":body", "");
 
+        // Alert mode from the web app's Settings: "notify" = silent notification
+        // only (no alarm sound). "alarm" = full alarm. Default: notify.
+        if ("notify".equals(NotifHelper.alertMode(ctx))) {
+            if (NotifHelper.isSuppressed(ctx, key)) return; // already notified this occurrence
+            NotifHelper.markShown(ctx, key);
+            NotifHelper.show(ctx, key, title, body);
+            return;
+        }
+
         final int notifId = key.hashCode();
 
         NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);

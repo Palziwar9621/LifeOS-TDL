@@ -7,6 +7,7 @@ import { todayStr } from '../../lib/dates';
 import { exportAllJson, downloadJson, tasksCsv, parseBackupJson, readFileText } from '../../lib/backup';
 import { requestNotificationPermission, notificationPermission } from '../../lib/notifications';
 import { enablePush, disablePush, pushSupported, pushPermission, sendTestPush, pushEnvironment, nativeAlarmsActive } from '../../lib/push';
+import { getAlertMode, setAlertMode, alertPermission, requestAlertPermission, type AlertMode } from '../../lib/alerts';
 import { nativeSyncStatus } from '../../lib/nativeAlarms';
 import { AlarmSoundPicker } from '../AlarmSoundPicker';
 import { updateUserPassword } from '../../lib/auth';
@@ -116,11 +117,34 @@ function NotificationsSection({ toast }: any) {
   const settings = getSettings();
   const [enabled, setEnabled] = useState(settings.notifications_enabled !== false);
   const [alarmSound, setAlarmSound] = useState<string | null>((settings.data as any)?.alarm_sound ?? 'chime');
+  const [mode, setMode] = useState<AlertMode>(getAlertMode());
   const perm = notificationPermission();
 
   return (
     <section className="card p-5">
       <h2 className="section-title mb-4">Notifications</h2>
+      <p className="text-sm font-semibold">When a routine or task time arrives</p>
+      <p className="mb-2 text-xs muted">Applies to everything on the Productivity tab (routines), tasks with alerts, and reminders. Works even when the app is closed.</p>
+      <div className="flex flex-wrap gap-2">
+        {([['notify', '🔔 Notification only'], ['alarm', '⏰ Notification + alarm'], ['off', '🔇 Off']] as const).map(([v, label]) => (
+          <button
+            key={v}
+            className={mode === v ? 'btn-primary !py-1.5 text-xs' : 'btn-secondary !py-1.5 text-xs'}
+            onClick={async () => {
+              setMode(v);
+              await setAlertMode(v);
+              if (v !== 'off' && alertPermission() !== 'granted') {
+                const p = await requestAlertPermission();
+                if (p !== 'granted') toast('Please allow notifications so alerts can reach you.', 'info');
+              }
+              toast(v === 'off' ? 'Alerts off' : v === 'alarm' ? 'Full alarm on — rings until you turn it off' : 'Notification only — no ringing', 'success');
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="divider my-3" />
       <label className="flex items-center justify-between gap-3 py-2">
         <span>
           <span className="text-sm font-semibold">Reminder notifications</span>

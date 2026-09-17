@@ -3,6 +3,7 @@ import { dbState, snoozeReminder, updateReminder, completeTask, updateTask, getS
 import { splitIso, todayStr, dateTimeFrom, parseDateStr } from './dates';
 import { startAlarm, wasDismissed, isKeyDismissed } from './alarm';
 import { syncDismissals } from './dismissals';
+import { deliverAlert } from './alerts';
 import type { Reminder, Task, RoutineTask } from './types';
 
 type Timer = ReturnType<typeof setInterval>;
@@ -80,13 +81,12 @@ export function startReminderScheduler() {
         const key = `rem:${r.id}:${r.snoozed_until ?? r.due_at}`;
         if (fireAt <= now && now - fireAt < 60000 * 60 * 12 && !notified.has(key) && !isKeyDismissed(key)) {
           notified.add(key);
-          show(
+          deliverAlert(
+            key,
             '⏰ ' + (r.important ? '⭐ ' + r.title : r.title),
             r.notes ?? 'Reminder — tap to open LifeOS',
-            r.id + ':' + (r.snoozed_until ?? r.due_at),
-            () => clickHandler?.(r),
+            () => { if (!wasDismissed(key)) startAlarm(key, defaultSound as any, { title: r.title, body: r.notes ?? 'Reminder' }); },
           );
-          if (!wasDismissed(key)) startAlarm(key, defaultSound as any, { title: r.title, body: r.notes ?? 'Reminder' });
           void updateReminder(r.id, { fired_at: new Date().toISOString() } as any);
         }
       }
@@ -100,8 +100,9 @@ export function startReminderScheduler() {
         const key = `task:${t.id}:${t.due_date}:${t.due_time}`;
         if (fireMs <= now && now - fireMs < 60000 * 60 * 12 && !notified.has(key) && !isKeyDismissed(key)) {
           notified.add(key);
-          show('⏰ Task due soon', t.title, t.id + ':' + t.due_date, () => taskClickHandler?.(t));
-          if (!wasDismissed(key)) startAlarm(key, defaultSound as any, { title: t.title, body: 'Task due soon' });
+          deliverAlert(key, '⏰ Task due soon', t.title, () => {
+            if (!wasDismissed(key)) startAlarm(key, defaultSound as any, { title: t.title, body: 'Task due soon' });
+          });
         }
       }
 
@@ -118,8 +119,9 @@ export function startReminderScheduler() {
         const key = `routine:${rt.id}:${today}`;
         if (fireAt <= now && now - fireAt < 60000 * 60 * 2 && !notified.has(key) && !isKeyDismissed(key)) {
           notified.add(key);
-          show('⏰ Routine time', rt.title, rt.id + ':' + today);
-          if (!wasDismissed(key)) startAlarm(key, defaultSound as any, { title: rt.title, body: 'Routine time' });
+          deliverAlert(key, '⏰ Routine time', rt.title, () => {
+            if (!wasDismissed(key)) startAlarm(key, defaultSound as any, { title: rt.title, body: 'Routine time' });
+          });
         }
         void fireMs;
       }
