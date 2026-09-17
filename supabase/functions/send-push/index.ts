@@ -240,6 +240,18 @@ async function dueItems(supabase: any): Promise<DueItem[]> {
 // ---------- HTTP handler ----------
 
 Deno.serve(async (req) => {
+  // Wrap everything so uncaught errors return their MESSAGE, not a blank 500.
+  try {
+    return await handle(req);
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: String(e?.message ?? e), stack: String(e?.stack ?? '').slice(0, 500) }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+});
+
+async function handle(req: Request): Promise<Response> {
   const auth = req.headers.get('Authorization') ?? '';
   const adminKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const supabase = createAdminClient(Deno.env.get('SUPABASE_URL')!, adminKey);
@@ -257,10 +269,14 @@ Deno.serve(async (req) => {
   const token = auth.replace('Bearer ', '');
   const isService = token === adminKey;
   if (!isService) {
-    const asUser = createAdminClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY') ?? adminKey);
-    const { data } = await asUser.auth.getUser(token);
-    if (!data?.user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
-    body.user_id = data.user.id;
+    // Verify the user's JWT via the Auth server REST endpoint.
+    const uRes = await fetch(`${Deno.env.get('SUPABASE_URL')}/auth/v1/user`, {
+      headers: { apikey: Deno.env.get('SUPABASE_ANON_KEY') ?? adminKey, Authorization: `Bearer ${token}` },
+    });
+    if (!uRes.ok) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+    const u = await uRes.json();
+    if (!u?.id) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+    body.user_id = u.id;
     body.test = true;
   }
 
@@ -323,7 +339,7 @@ Deno.serve(async (req) => {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   });
-});
+}
 
 // Minimal supabase-js-compatible client over fetch (avoids esm.sh at bundle time).
 function createAdminClient(url: string, apiKey: string) {
