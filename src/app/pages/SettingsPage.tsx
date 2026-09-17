@@ -6,7 +6,7 @@ import { useApp } from '../store';
 import { todayStr } from '../../lib/dates';
 import { exportAllJson, downloadJson, tasksCsv, parseBackupJson, readFileText } from '../../lib/backup';
 import { requestNotificationPermission, notificationPermission } from '../../lib/notifications';
-import { enablePush, disablePush, pushSupported, pushPermission, sendTestPush, pushEnvironment } from '../../lib/push';
+import { enablePush, disablePush, pushSupported, pushPermission, sendTestPush, pushEnvironment, nativeAlarmsActive } from '../../lib/push';
 import { AlarmSoundPicker } from '../AlarmSoundPicker';
 import { updateUserPassword } from '../../lib/auth';
 import { getClient, loadSupabaseConfig } from '../../lib/supabase';
@@ -156,16 +156,21 @@ function PushAlarmsCard({ toast }: any) {
   const [busy, setBusy] = useState(false);
 
   // The installed apps (Android shell / Electron) have no push service —
-  // web push only works in real browsers. Be honest instead of failing.
+  // but native alarms cover closed-app ringing there instead. Be honest.
   if (env !== 'browser') {
     return (
       <div>
         <p className="text-sm font-semibold">Alarms with the app closed</p>
         <p className="mt-2 text-xs muted">
           {env === 'android-shell'
-            ? 'The LifeOS Android app cannot receive push alarms (Android limitation for in-app browsers). To get alarms when everything is closed, open life-os-tdl.vercel.app in Chrome on your phone → Settings → Notifications → Enable background alarms. Chrome will ring even when closed. In-app alarms still work here while the app is open.'
-            : 'The LifeOS Windows app cannot receive push alarms. To get alarms when everything is closed, open life-os-tdl.vercel.app in Chrome or Edge → Settings → Notifications → Enable background alarms. In-app alarms still work here while the app is open.'}
+            ? '✓ This app schedules alarms natively (Android AlarmManager) — reminders, task alerts and routines ring with full sound + vibration even when the app is closed or the phone restarted. No web-push setup needed here. (Web push is only for browsers.)'
+            : '✓ This app schedules alarms natively — reminders, task alerts and routines ring with a system notification + sound even when the window is closed to the tray. Keep the app running in the tray (not quit) for alarms to fire. No web-push setup needed here.'}
         </p>
+        {!nativeAlarmsActive() && (
+          <p className="mt-1 text-xs text-amber-600 dark:text-amber-300">
+            Native alarms not connected yet — fully close and reopen the app once, then check again.
+          </p>
+        )}
       </div>
     );
   }

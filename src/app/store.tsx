@@ -122,6 +122,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         await pull();
       }
       if (!cancelled) startReminderScheduler();
+      // Hand upcoming alarms to the native layer (Android shell / Electron)
+      // so alarms ring even when the app is closed. No-op in browsers.
+      import('../lib/nativeAlarms').then((m) => m.startNativeAlarmSync());
     })();
     return () => { cancelled = true; };
   }, [session?.user?.id]);

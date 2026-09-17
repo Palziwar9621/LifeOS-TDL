@@ -32,10 +32,14 @@ export function pushSupported(): boolean {
     typeof Notification !== 'undefined';
 }
 
+import { nativeAlarmsActive } from './nativeAlarms';
+export { nativeAlarmsActive };
+
 /**
  * Which runtime are we in? Web push only works in real browsers — the
  * Android WebView shell and Electron have no push service, and attempting
- * to subscribe there fails with "push service not available".
+ * to subscribe there fails with "push service not available". (Those apps
+ * use native alarms instead — see nativeAlarms.ts.)
  */
 export type PushEnvironment = 'browser' | 'android-shell' | 'electron';
 export function pushEnvironment(): PushEnvironment {
