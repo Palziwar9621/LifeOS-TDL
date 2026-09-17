@@ -52,14 +52,28 @@ public class MainActivity extends Activity {
         web = findViewById(R.id.webview);
         splash = findViewById(R.id.splash);
 
-        // Pull-to-refresh: swipe down at the top of the page reloads the site.
+        // Pull-to-refresh: only when the page's inner scroll container is at
+        // the very top. The app scrolls inside <main> (WebView scrollY is
+        // always 0), so we ask it — and also watch any scrolled element.
         androidx.swiperefreshlayout.widget.SwipeRefreshLayout swipe = findViewById(R.id.swipe);
         swipe.setOnRefreshListener(() -> {
             web.reload();
             new Handler(Looper.getMainLooper()).postDelayed(() -> swipe.setRefreshing(false), 1500);
         });
-        web.getViewTreeObserver().addOnScrollChangedListener(() ->
-            swipe.setEnabled(web.getScrollY() == 0));
+        // Evaluate "at top" via JS over the real scroll containers.
+        final android.os.Handler ui = new Handler(Looper.getMainLooper());
+        final Runnable evalTop = new Runnable() {
+            @Override public void run() {
+                web.evaluateJavascript(
+                    "(function(){var els=document.querySelectorAll('main,div,section');" +
+                    "for(var i=0;i<els.length;i++){var e=els[i];" +
+                    "if(e.scrollHeight>e.clientHeight+4&&e.scrollTop>4)return 'false';}" +
+                    "return String(window.scrollY>4||document.documentElement.scrollTop>4);})()",
+                    v -> swipe.setEnabled(!"\"false\"".equals(v)));
+            }
+        };
+        web.getViewTreeObserver().addOnScrollChangedListener(evalTop::run);
+        evalTop.run();
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
