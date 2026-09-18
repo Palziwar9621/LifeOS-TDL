@@ -4,8 +4,8 @@ import { Modal, Icon, PriorityChip } from '../ui/components';
 import { parseQuickAdd } from '../lib/quickadd';
 import { createTask, createNote, createReminder, createProject, createGoal, dbState } from '../lib/db';
 import { useApp } from './store';
-import { fmtDate } from '../lib/dates';
-import type { Priority } from '../lib/types';
+import { fmtDate, todayStr } from '../lib/dates';
+import type { Priority, Recurrence } from '../lib/types';
 
 type QuickKind = 'task' | 'note' | 'reminder' | 'project' | 'goal';
 
@@ -19,7 +19,7 @@ export function QuickAddModal({ open, onClose, initialKind = 'task' as QuickKind
   const [priority, setPriority] = useState<Priority | ''>('');
   const [dueDate, setDueDate] = useState('');
   const [dueTime, setDueTime] = useState('');
-  const [recurrence, setRecurrence] = useState('');
+  const [recurrence, setRecurrence] = useState<Recurrence | ''>('');
   const [recDays, setRecDays] = useState<number[]>([]);
 
   useEffect(() => {
@@ -56,11 +56,11 @@ export function QuickAddModal({ open, onClose, initialKind = 'task' as QuickKind
           : null;
         await createTask({
           title: p.title,
-          due_date: dueDate || p.due_date,
+          due_date: dueDate || p.due_date || todayStr(),
           due_time: dueTime || p.due_time,
           priority: (priority || p.priority || 'medium') as Priority,
-          recurrence: p.recurrence,
-          recurrence_days: p.recurrence_days,
+          recurrence: recurrence || p.recurrence,
+          recurrence_days: recurrence === 'weekly' ? recDays : p.recurrence_days,
           recurrence_anchor: (dueDate || p.due_date) ?? undefined,
           reminder_minutes: p.reminder_minutes,
           estimated_minutes: p.estimated_minutes,
@@ -165,7 +165,7 @@ export function QuickAddModal({ open, onClose, initialKind = 'task' as QuickKind
                 <label className="label">Repeat</label>
                 <div className="flex flex-wrap gap-1.5">
                   {['', 'daily', 'weekdays', 'weekly', 'monthly'].map((r) => (
-                    <button key={r || 'none'} className={`chip ${recurrence === r ? 'chip-brand' : ''}`} onClick={() => setRecurrence(r)}>
+                    <button key={r || 'none'} className={`chip ${recurrence === r ? 'chip-brand' : ''}`} onClick={() => setRecurrence(r as Recurrence | '')}>
                       {r || 'No repeat'}
                     </button>
                   ))}

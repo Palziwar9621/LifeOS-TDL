@@ -53,13 +53,14 @@ public class MainActivity extends Activity {
         splash = findViewById(R.id.splash);
 
         // Pull-to-refresh: swipe down at the top of the page reloads the site.
-        androidx.swiperefreshlayout.widget.SwipeRefreshLayout swipe = findViewById(R.id.swipe);
+        // The site scrolls inside an inner <main>, so PageTopSwipeRefreshLayout
+        // relies on scroll reports from the page (see LifeOSNative bridge).
+        app.lifeos.twa.PageTopSwipeRefreshLayout swipe = findViewById(R.id.swipe);
+        swipe.attachWebView(web);
         swipe.setOnRefreshListener(() -> {
             web.reload();
             new Handler(Looper.getMainLooper()).postDelayed(() -> swipe.setRefreshing(false), 1500);
         });
-        web.getViewTreeObserver().addOnScrollChangedListener(() ->
-            swipe.setEnabled(web.getScrollY() == 0));
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -76,6 +77,9 @@ public class MainActivity extends Activity {
         // JS bridge: the web app pushes its upcoming alarms here; they ring
         // natively via AlarmManager even when this app is closed.
         web.addJavascriptInterface(new AlarmBridge(this), "LifeOSNative");
+        // JS bridge: page reports its scroll position so pull-to-refresh only
+        // fires when every scroll container is at the very top.
+        web.addJavascriptInterface(new ScrollReporter(swipe), "LifeOSScroll");
 
         // Gentle pulse on the logo while loading.
         View logo = findViewById(R.id.splash_logo);

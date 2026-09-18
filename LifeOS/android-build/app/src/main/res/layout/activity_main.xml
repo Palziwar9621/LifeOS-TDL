@@ -4,7 +4,11 @@
     android:layout_height="match_parent"
     android:background="#0F172A">
 
-    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+    <!-- Custom SwipeRefreshLayout: the site scrolls inside an inner <main>
+         container (the WebView itself never scrolls), so refresh is enabled
+         only when the page reports — via the LifeOSNative bridge — that
+         every scroll container is at the top. -->
+    <app.lifeos.twa.PageTopSwipeRefreshLayout
         android:id="@+id/swipe"
         android:layout_width="match_parent"
         android:layout_height="match_parent">
@@ -14,7 +18,7 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
 
-    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+    </app.lifeos.twa.PageTopSwipeRefreshLayout>
 
     <!-- Splash overlay: sits on top of the WebView until the site finishes
          loading, then fades out (alpha animation in MainActivity). -->

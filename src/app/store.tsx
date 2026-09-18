@@ -5,6 +5,7 @@ import { getClient, loadSupabaseConfig, hasSupabase } from '../lib/supabase';
 import { getSession, onAuthChange, signOut as authSignOut } from '../lib/auth';
 import { initStore, resetStore, setToastFn, flush, pull, getOutboxCount, getOnline, subscribeDb, currentUserId, getDbVersion } from '../lib/db';
 import { startReminderScheduler } from '../lib/notifications';
+import { initScrollReporting } from '../lib/scrollReport';
 
 export type Page =
   | 'home' | 'today' | 'tasks' | 'calendar' | 'weekly' | 'projects' | 'goals'
@@ -125,6 +126,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // Hand upcoming alarms to the native layer (Android shell / Electron)
       // so alarms ring even when the app is closed. No-op in browsers.
       import('../lib/nativeAlarms').then((m) => m.startNativeAlarmSync());
+      // Tell the Android shell when the page is scrolled to the top
+      // (pull-to-refresh gating). No-op elsewhere.
+      initScrollReporting();
     })();
     return () => { cancelled = true; };
   }, [session?.user?.id]);
