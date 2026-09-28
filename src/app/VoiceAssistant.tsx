@@ -39,7 +39,7 @@ export function VoiceAssistant() {
       speak(res.message);
       if (res.ok) toast(res.message, 'success');
     } catch (e: any) {
-      speak(e?.message ?? 'Something went wrong');
+      speak(e?.message ?? 'Something went wrong — check your connection');
     } finally {
       setBusy(false);
       setArmed(false);
@@ -47,7 +47,12 @@ export function VoiceAssistant() {
   }, [busy, page, pageParams, navigate, speak, toast]);
 
   const onTranscript = useCallback((text: string, isFinal: boolean) => {
-    if (!isFinal || busy) return;
+    // Show partial transcripts live so it's obvious the mic is hearing you.
+    if (!isFinal) {
+      if (text && text.length > 2) setCaption(text);
+      return;
+    }
+    if (busy) return;
     if (armed) {
       // Command mode: everything spoken is a command.
       setArmed(false);
@@ -100,10 +105,9 @@ export function VoiceAssistant() {
       setArmed(false);
       setCaption(null);
     } else {
-      toggleContinuous();
-      oneShot();
+      oneShot();   // single start path — double-start caused busy errors
     }
-  }, [toggleContinuous, oneShot]);
+  }, []);
 
   // Cleanup on unmount
   useEffect(() => () => { stopListening(); }, []);
