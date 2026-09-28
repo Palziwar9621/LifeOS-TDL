@@ -27,14 +27,22 @@ public class SpeechBridge {
     private final Activity activity;
     private static final int REQ = 4711;
     private SpeechRecognizer recognizer;
+    private boolean continuous = false;
 
     public SpeechBridge(Activity activity) { this.activity = activity; }
 
     /** One-shot listen: opens native recognition; result lands in the JS callback. */
     @JavascriptInterface
     public String listen() {
-        // Must run on the UI thread.
-        activity.runOnUiThread(() -> startListening(null));
+        // Must run on the UI thread. Ensure mic permission first.
+        activity.runOnUiThread(() -> {
+            if (activity.checkSelfPermission("android.permission.RECORD_AUDIO") != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                activity.requestPermissions(new String[]{"android.permission.RECORD_AUDIO"}, 2002);
+                fire("onSpeechError", "9");
+                return;
+            }
+            startListening(null);
+        });
         return "started";
     }
 
@@ -46,13 +54,22 @@ public class SpeechBridge {
     /** Continuous path (used when the page wants wake-word mode). */
     @JavascriptInterface
     public String startContinuous() {
-        activity.runOnUiThread(() -> startListening("continuous"));
+        activity.runOnUiThread(() -> {
+            if (activity.checkSelfPermission("android.permission.RECORD_AUDIO") != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                activity.requestPermissions(new String[]{"android.permission.RECORD_AUDIO"}, 2002);
+                fire("onSpeechError", "9");
+                return;
+            }
+            continuous = true;
+            startListening("continuous");
+        });
         return "started";
     }
 
     @JavascriptInterface
     public String stopContinuous() {
         activity.runOnUiThread(() -> {
+            continuous = false;
             if (recognizer != null) {
                 try { recognizer.stopListening(); } catch (Exception ignored) {}
                 try { recognizer.destroy(); } catch (Exception ignored) {}
@@ -60,6 +77,16 @@ public class SpeechBridge {
             }
         });
         return "stopped";
+    }
+
+    /** Restart a dead session (continuous mode): Android ends recognition
+     *  after every utterance, so without this the mic dies after one command. */
+    private void restartIfContinuous(String mode) {
+        if (!continuous) return;
+        activity.runOnUiThread(() -> {
+            if (recognizer != null) { try { recognizer.destroy(); } catch (Exception ignored) {} recognizer = null; }
+            new android.os.Handler(activity.getMainLooper()).postDelayed(() -> startListening("continuous"), 300);
+        });
     }
 
     private void startListening(String mode) {
@@ -76,10 +103,12 @@ public class SpeechBridge {
                     if (list != null && !list.isEmpty()) fire("onSpeechResult", list.get(0));
                     else fire("onSpeechError", "no_match");
                     if (mode == null) { try { recognizer.destroy(); } catch (Exception ignored) {} recognizer = null; }
+                    else restartIfContinuous(mode);
                 }
                 @Override public void onError(int error) {
                     fire("onSpeechError", String.valueOf(error)); // 6=no speech, 7=no match, 8=busy
                     if (mode == null) { try { recognizer.destroy(); } catch (Exception ignored) {} recognizer = null; }
+                    else restartIfContinuous(mode);
                 }
                 @Override public void onReadyForSpeech(Bundle params) { fire("onSpeechReady", ""); }
                 @Override public void onBeginningOfSpeech() {}
