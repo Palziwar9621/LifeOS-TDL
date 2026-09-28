@@ -12,10 +12,15 @@ import { todayStr } from './dates';
 import { parseQuickAdd } from './quickadd';
 
 // --- Speech recognition availability ---
+// Web Speech API (Chrome/Edge) OR the Android shell's native bridge
+// (window.LifeOSSpeech — the WebView has no Web Speech API of its own).
 type SR = any;
+export function nativeSpeech(): any | null {
+  return typeof window !== 'undefined' ? (window as any).LifeOSSpeech ?? null : null;
+}
 export function speechSupported(): boolean {
-  return typeof window !== 'undefined' &&
-    !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+  if (typeof window === 'undefined') return false;
+  return !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition || nativeSpeech());
 }
 function getSR(): SR | null {
   return ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition) ?? null;
@@ -44,6 +49,31 @@ let recog: SR | null = null;
 let wantListening = false;
 let onHeard: ((text: string, isFinal: boolean) => void) | null = null;
 let onError: ((err: string) => void) | null = null;
+
+// Native Android bridge (window.LifeOSSpeech): the page installs
+// callbacks on window.__lifeosSpeech and calls LifeOSSpeech.startContinuous()
+// / stopContinuous(); results arrive as __lifeosSpeech.onSpeechResult(text)
+// or onSpeechError(code).
+function nativeResult(text: string) { onHeard?.(text, true); }
+function nativePartial(text: string) { onHeard?.(text, false); }
+function nativeError(code: string) {
+  if (code === '6' || code === '7' || code === 'no_match') return; // benign
+  if (code === '8' || code === 'busy') return;
+  if (code === 'not_available' || code === 'exception') onError?.('Speech recognition not available on this device');
+  else if (code === '9' || code === '10') onError?.('Microphone permission denied');
+  else onError?.('Speech error ' + code);
+}
+
+export function installNativeSpeech(): void {
+  const n = nativeSpeech();
+  if (!n || typeof window === 'undefined') return;
+  (window as any).__lifeosSpeech = {
+    onSpeechResult: nativeResult,
+    onSpeechPartial: nativePartial,
+    onSpeechError: nativeError,
+    onSpeechReady: () => { /* recognition armed */ },
+  };
+}
 
 function buildRecognizer(): SR | null {
   const Ctor = getSR();
@@ -87,6 +117,12 @@ export function startListening(
   onHeard = heard;
   onError = err ?? null;
   wantListening = true;
+  // Native bridge first (Android shell) — WebView lacks Web Speech API.
+  const n = nativeSpeech();
+  if (n && typeof n.startContinuous === 'function') {
+    installNativeSpeech();
+    try { n.startContinuous(); return true; } catch { /* fall through */ }
+  }
   if (!recog) recog = buildRecognizer();
   if (!recog) return false;
   try { recog.start(); } catch { /* already running */ }
@@ -95,6 +131,8 @@ export function startListening(
 
 export function stopListening(): void {
   wantListening = false;
+  const n = nativeSpeech();
+  if (n && typeof n.stopContinuous === 'function') { try { n.stopContinuous(); } catch { /* ignore */ } }
   try { recog?.stop(); } catch { /* ignore */ }
 }
 

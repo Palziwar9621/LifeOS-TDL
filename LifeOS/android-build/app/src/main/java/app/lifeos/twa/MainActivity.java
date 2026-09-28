@@ -35,6 +35,15 @@ public class MainActivity extends Activity {
     private View splash;
     private boolean splashGone = false;
     private boolean askedNotif = false;
+    private static MainActivity instance;
+
+    public static MainActivity get() { return instance; }
+
+    /** Evaluate JS in the page (used by the speech bridge to deliver results). */
+    public void evaluateJs(String js) {
+        if (web == null) return;
+        runOnUiThread(() -> web.evaluateJavascript(js, null));
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -80,6 +89,9 @@ public class MainActivity extends Activity {
         // JS bridge: page reports its scroll position so pull-to-refresh only
         // fires when every scroll container is at the very top.
         web.addJavascriptInterface(new ScrollReporter(swipe), "LifeOSScroll");
+        // JS bridge: native speech recognition (WebView has no Web Speech API).
+        web.addJavascriptInterface(new SpeechBridge(this), "LifeOSSpeech");
+        instance = this;
 
         // Gentle pulse on the logo while loading.
         View logo = findViewById(R.id.splash_logo);
