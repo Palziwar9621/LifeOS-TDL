@@ -1,5 +1,5 @@
 // LifeOS — Calendar: day / week / month views
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Icon, EmptyState } from '../../ui/components';
 import { dbState } from '../../lib/db';
 import { todayStr, addDays, startOfWeek, parseDateStr, fmtTime, toLocalDateStr, monthLabel, weekdayShort, relativeDay, dateTimeFrom } from '../../lib/dates';
@@ -44,6 +44,8 @@ export function CalendarPage() {
   const today = todayStr();
   const [view, setView] = useState<'day' | 'week' | 'month'>('week');
   const [cursor, setCursor] = useState(today);
+  // Expose the selected date to the voice assistant (context-aware adds).
+  useEffect(() => { (window as any).__lifeosCalendarDate = cursor; }, [cursor]);
   const [editing, setEditing] = useState<Task | null>(null);
   const [editingBlock, setEditingBlock] = useState<ScheduleBlock | null>(null);
   const [filters, setFilters] = useState<Set<CalFilter>>(loadFilters);

@@ -6,6 +6,7 @@ import type { Page } from './store';
 import { Icon, Logo, Avatar, useConfirm } from '../ui/components';
 import { getProfile, getOutboxCount, subscribeDb, getLastSyncError } from '../lib/db';
 import { QuickAddModal } from './quickadd';
+import { VoiceAssistant } from './VoiceAssistant';
 
 const NAV: { key: Page; label: string; icon: string }[] = [
   { key: 'home', label: 'Home', icon: 'home' },
@@ -145,6 +146,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         {moreOpen && <MoreSheet onClose={() => setMoreOpen(false)} />}
       </div>
       <QuickAddModal open={qOpen} onClose={() => setQOpen(false)} />
+      <VoiceAssistant />
       {confirmEl}
     </div>
   );

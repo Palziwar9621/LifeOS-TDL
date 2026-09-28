@@ -13,8 +13,9 @@ import { AlarmSoundPicker } from '../AlarmSoundPicker';
 import { updateUserPassword } from '../../lib/auth';
 import { getClient, loadSupabaseConfig } from '../../lib/supabase';
 import { createTask } from '../../lib/db';
+import { getAssistantSettings, saveAssistantSettings, speechSupported } from '../../lib/voice';
 
-type Section = 'account' | 'appearance' | 'notifications' | 'categories' | 'tags' | 'sync' | 'data' | 'security' | 'about';
+type Section = 'account' | 'appearance' | 'notifications' | 'assistant' | 'categories' | 'tags' | 'sync' | 'data' | 'security' | 'about';
 
 export function SettingsPage() {
   const { theme, setTheme, premiumTheme, setPremiumTheme, toast, signOut: appSignOut } = useApp();
@@ -27,6 +28,7 @@ export function SettingsPage() {
     { key: 'account', label: 'Account & Profile', icon: 'user' },
     { key: 'appearance', label: 'Appearance', icon: 'sun' },
     { key: 'notifications', label: 'Notifications', icon: 'bell' },
+    { key: 'assistant', label: 'Voice Assistant', icon: 'mic' },
     { key: 'categories', label: 'Categories & Tags', icon: 'folder' },
     { key: 'sync', label: 'Data & Sync', icon: 'sync' },
     { key: 'data', label: 'Backup & Export', icon: 'note' },
@@ -51,6 +53,7 @@ export function SettingsPage() {
           {section === 'account' && <AccountSection profile={profile} toast={toast} />}
           {section === 'appearance' && <AppearanceSection theme={theme} setTheme={setTheme} premiumTheme={premiumTheme} setPremiumTheme={setPremiumTheme} />}
           {section === 'notifications' && <NotificationsSection toast={toast} />}
+          {section === 'assistant' && <AssistantSection toast={toast} />}
           {section === 'categories' && <CategoriesSection toast={toast} />}
           {section === 'sync' && <SyncSection toast={toast} />}
           {section === 'data' && <DataSection toast={toast} />}
@@ -145,6 +148,54 @@ function AppearanceSection({ theme, setTheme, premiumTheme, setPremiumTheme }: a
         ))}
       </div>
       <p className="mt-3 text-xs muted">Dark themes (Deep Focus, Obsidian & Champagne) work best with Mode set to Dark. Your choice is remembered on this device.</p>
+    </section>
+  );
+}
+
+function AssistantSection({ toast }: any) {
+  const [s, setS] = useState(() => getAssistantSettings());
+  const supported = speechSupported();
+
+  const patch = (p: Partial<typeof s>) => {
+    const next = { ...s, ...p };
+    setS(next);
+    saveAssistantSettings(next);
+  };
+
+  return (
+    <section className="card p-5">
+      <h2 className="section-title mb-4">Voice Assistant</h2>
+      {!supported ? (
+        <p className="text-sm muted">This browser/webview doesn't support speech recognition. The assistant works in Chrome, Edge, and the Android app on most devices.</p>
+      ) : (
+        <>
+          <label className="mb-4 flex items-center justify-between gap-3">
+            <span className="text-sm font-semibold">Voice assistant enabled</span>
+            <input type="checkbox" className="checkbox-tap" checked={s.enabled} onChange={(e) => patch({ enabled: e.target.checked })} />
+          </label>
+
+          <label className="label">Wake word</label>
+          <input className="input mb-1" value={s.wakeWord} onChange={(e) => patch({ wakeWord: e.target.value.toLowerCase() })} placeholder="hey lifeos" />
+          <p className="text-xs muted mb-4">Say this phrase (while the app is open) followed by your command — e.g. “{s.wakeWord} add task submit assignment tomorrow at 5”. Or tap the mic button and just speak.</p>
+
+          <label className="flex items-center justify-between gap-3">
+            <span className="text-sm font-semibold">Keep listening for the wake word</span>
+            <input type="checkbox" className="checkbox-tap" checked={s.listenContinuously} onChange={(e) => patch({ listenContinuously: e.target.checked })} />
+          </label>
+
+          <div className="mt-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-4 text-xs muted">
+            <p className="font-semibold text-slate-700 dark:text-slate-200 mb-1">What you can say</p>
+            <ul className="list-disc list-inside space-y-0.5">
+              <li>“Add task finish Laplace assignment tomorrow at 7 PM !high”</li>
+              <li>“Remind me to call the bank at 9 am”</li>
+              <li>“Add note Laplace formulas about remember the s-shift rule”</li>
+              <li>“Open calendar” / “Go to tasks”</li>
+              <li>“What's on my day?”</li>
+            </ul>
+            <p className="mt-2">Tasks added from the Calendar tab land on the day you have selected. Everything runs on-device — no audio leaves your phone.</p>
+          </div>
+        </>
+      )}
     </section>
   );
 }

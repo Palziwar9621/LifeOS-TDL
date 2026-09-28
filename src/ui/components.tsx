@@ -39,6 +39,7 @@ export function Icon({ name, className = 'h-5 w-5', size }: { name: string; clas
     more: <path d="M12 5.5h.01M12 12h.01M12 18.5h.01" strokeWidth="2.4" strokeLinecap="round" />,
     play: <path d="M8 5.5v13l11-6.5-11-6.5Z" strokeWidth="1.8" strokeLinejoin="round" />,
     pause: <path d="M9 5v14M15 5v14" strokeWidth="2.2" strokeLinecap="round" />,
+    mic: <><rect x="9" y="2" width="6" height="12" rx="3" strokeWidth="1.8" /><path d="M5 10a7 7 0 0 0 14 0M12 17v4m-4 0h8" strokeWidth="1.8" strokeLinecap="round" /></>,
     refresh: <path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />,
     offline: <path d="M2 2l20 20M8.5 16.4A5 5 3 0 1 12 8h.5M5 12a7 7 0 0 1 1.9-4.8M19 12a7 7 0 0 0-3.1-5.8M12 20h.01" strokeWidth="1.8" strokeLinecap="round" />,
   };
