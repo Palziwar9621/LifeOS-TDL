@@ -91,6 +91,8 @@ public class MainActivity extends Activity {
         web.addJavascriptInterface(new ScrollReporter(swipe), "LifeOSScroll");
         // JS bridge: native speech recognition (WebView has no Web Speech API).
         web.addJavascriptInterface(new SpeechBridge(this), "LifeOSSpeech");
+        // JS bridge: background wake-word service control.
+        web.addJavascriptInterface(new AssistantBridge(this), "LifeOSAssistant");
         instance = this;
 
         // Gentle pulse on the logo while loading.

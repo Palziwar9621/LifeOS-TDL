@@ -2,7 +2,7 @@
 //
 // The in-app scheduler only rings while the app is open, and web push only
 // works in real browsers. This bridge closes that gap for the installed
-// apps: it computes the next 24h of due alarms (same rules as
+// apps: it computes the next 7 days of due alarms (same rules as
 // notifications.ts) and hands them to the native layer:
 //
 //   Android shell → AlarmManager exact alarms via a JS interface
@@ -33,7 +33,10 @@ function alarmSound(): string {
 export function computeUpcomingAlarms(): NativeAlarm[] {
   const out: NativeAlarm[] = [];
   const now = Date.now();
-  const horizon = now + 24 * 60 * 60 * 1000;
+  // 7 days ahead — so alarms ring on time even if the app stays closed for
+  // days. (The old 24h horizon was why alarms died after a while closed:
+  // nothing beyond tomorrow was ever handed to AlarmManager.)
+  const horizon = now + 7 * 24 * 60 * 60 * 1000;
   const s = dbState();
   const defaultSound = alarmSound();
 
@@ -52,17 +55,16 @@ export function computeUpcomingAlarms(): NativeAlarm[] {
   // Tasks with alert lead time
   for (const t of s.tasks as Task[]) {
     if (t.deleted || t.archived || t.status === 'completed' || t.status === 'cancelled') continue;
+    if ((t as any).remind_me === false) continue; // user turned reminders off for this task
     if (t.reminder_minutes == null || !t.due_date) continue;
     const due = new Date(t.due_date + 'T' + (t.due_time ?? '09:00')).getTime();
     add(`task:${t.id}:${t.due_date}:${t.due_time}`, due - (t.reminder_minutes ?? 0) * 60000, '⏰ Task due soon', t.title);
   }
 
-  // Routine tasks with a time of day — today + tomorrow (multi-day aware).
+  // Routine tasks with a time of day — every day within the 7-day horizon
+  // (so a closed app still rings routines on day 3, 4, 5…).
   const today = todayStr();
-  const tomorrow = new Date(parseDateStr(today).getTime() + 86400000);
-  const t2 = tomorrow.toISOString().slice(0, 10);
-  const dowToday = parseDateStr(today).getDay();
-  const dowTomorrow = (dowToday + 1) % 7;
+  const dow0 = parseDateStr(today).getDay();
   const routineOn = (rt: RoutineTask, date: string, dow: number) => {
     if (rt.archived || !rt.time_of_day) return false;
     if (rt.days && rt.days.length) return rt.days.includes(dow);
@@ -72,7 +74,9 @@ export function computeUpcomingAlarms(): NativeAlarm[] {
   const doneOn = (rt: RoutineTask, date: string) =>
     s.routine_completions.some((c) => c.task_id === rt.id && c.done_date === date);
   for (const rt of s.routine_tasks as RoutineTask[]) {
-    for (const [date, dow] of [[today, dowToday], [t2, dowTomorrow]] as const) {
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(parseDateStr(today).getTime() + i * 86400000).toISOString().slice(0, 10);
+      const dow = (dow0 + i) % 7;
       if (!routineOn(rt, date, dow) || doneOn(rt, date)) continue;
       const at = new Date(date + 'T' + rt.time_of_day).getTime();
       add(`routine:${rt.id}:${date}`, at, '⏰ Routine time', rt.title);

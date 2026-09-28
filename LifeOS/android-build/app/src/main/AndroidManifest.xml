@@ -7,6 +7,10 @@
     <uses-permission android:name="android.permission.VIBRATE"/>
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
     <!-- SCHEDULE_EXACT_ALARM (not USE_EXACT_ALARM): user-grantable, so the app
          SHOWS in Settings → Apps → LifeOS → Alarms & reminders and can be
@@ -50,5 +54,13 @@
         </receiver>
 
         <service android:name=".AlarmSoundService"/>
+
+        <!-- Background wake-word listener: microphone foreground service.
+             REQUIRES the user to tap "Allow" on the mic prompt AND the
+             Android 14+ foreground-service-mic permission flow. -->
+        <service
+            android:name=".AssistantService"
+            android:exported="false"
+            android:foregroundServiceType="microphone"/>
     </application>
 </manifest>

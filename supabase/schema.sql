@@ -177,6 +177,7 @@ create table public.tasks (
   -- occurrence edits: { "2026-09-16": { "title": ..., "due_date": ..., "due_time": ..., "priority": ... } }
   occurrence_overrides jsonb not null default '{}'::jsonb,
   reminder_minutes integer,         -- minutes before due
+  remind_me boolean default true,   -- per-task alarm on/off (voice: "remind me" / "don't remind")
   estimated_minutes integer,
   actual_minutes integer,
   sort_order integer not null default 0,

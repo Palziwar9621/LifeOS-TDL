@@ -155,11 +155,23 @@ function AppearanceSection({ theme, setTheme, premiumTheme, setPremiumTheme }: a
 function AssistantSection({ toast }: any) {
   const [s, setS] = useState(() => getAssistantSettings());
   const supported = speechSupported();
+  const isAndroid = typeof navigator !== 'undefined' && /LifeOSNative/.test(navigator.userAgent);
+  const nativeAssistant = isAndroid ? (window as any).LifeOSAssistant ?? null : null;
+  const [wakeOn, setWakeOn] = useState<boolean>(() => !!nativeAssistant?.wakeEnabled?.());
 
   const patch = (p: Partial<typeof s>) => {
     const next = { ...s, ...p };
     setS(next);
     saveAssistantSettings(next);
+  };
+
+  const toggleWake = (on: boolean) => {
+    if (!nativeAssistant) return;
+    if (on) nativeAssistant.requestMicPermission?.();
+    const res = nativeAssistant.setWakeEnabled?.(on, s.wakeWord);
+    setWakeOn(on);
+    if (res && String(res).includes('false')) toast('Could not start background listener', 'error');
+    else toast(on ? 'Background listening on — say the wake word anytime' : 'Background listening off', 'success');
   };
 
   return (
@@ -174,25 +186,34 @@ function AssistantSection({ toast }: any) {
             <input type="checkbox" className="checkbox-tap" checked={s.enabled} onChange={(e) => patch({ enabled: e.target.checked })} />
           </label>
 
+          <label className="mb-4 flex items-center justify-between gap-3">
+            <span className="text-sm font-semibold">AI understanding (Groq)</span>
+            <input type="checkbox" className="checkbox-tap" checked={s.useAI} onChange={(e) => patch({ useAI: e.target.checked })} />
+          </label>
+          <p className="text-xs muted -mt-2 mb-4">On: free-form speech (“tomorrow I have dinner at 9 PM” → timed task with alarm). Off: built-in offline parser only. Your speech text is sent to the AI service only when this is on.</p>
+
           <label className="label">Wake word</label>
           <input className="input mb-1" value={s.wakeWord} onChange={(e) => patch({ wakeWord: e.target.value.toLowerCase() })} placeholder="hey lifeos" />
-          <p className="text-xs muted mb-4">Say this phrase (while the app is open) followed by your command — e.g. “{s.wakeWord} add task submit assignment tomorrow at 5”. Or tap the mic button and just speak.</p>
+          <p className="text-xs muted mb-4">Say this phrase followed by your command — e.g. “{s.wakeWord} add task submit assignment tomorrow at 5”. Or tap the mic button and just speak.</p>
 
-          <label className="flex items-center justify-between gap-3">
-            <span className="text-sm font-semibold">Keep listening for the wake word</span>
-            <input type="checkbox" className="checkbox-tap" checked={s.listenContinuously} onChange={(e) => patch({ listenContinuously: e.target.checked })} />
-          </label>
+          {nativeAssistant && (
+            <div className="rounded-2xl ring-1 ring-slate-900/10 dark:ring-white/10 p-4 mb-4">
+              <label className="flex items-center justify-between gap-3">
+                <span className="text-sm font-semibold">Listen when app is closed</span>
+                <input type="checkbox" className="checkbox-tap" checked={wakeOn} onChange={(e) => toggleWake(e.target.checked)} />
+              </label>
+              <p className="text-xs muted mt-1.5">Runs a background listener so “{s.wakeWord}” works anytime — Android shows a mic icon while it's active. When the wake word is heard you get a tap-to-speak popup; saying “{s.wakeWord} open the app” opens LifeOS.</p>
+            </div>
+          )}
 
-          <div className="mt-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-4 text-xs muted">
+          <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-4 text-xs muted">
             <p className="font-semibold text-slate-700 dark:text-slate-200 mb-1">What you can say</p>
             <ul className="list-disc list-inside space-y-0.5">
-              <li>“Add task finish Laplace assignment tomorrow at 7 PM !high”</li>
-              <li>“Remind me to call the bank at 9 am”</li>
-              <li>“Add note Laplace formulas about remember the s-shift rule”</li>
-              <li>“Open calendar” / “Go to tasks”</li>
-              <li>“What's on my day?”</li>
+              <li>“Tomorrow I have dinner at 9 PM” → timed task, alarm on</li>
+              <li>“Remind me about the dentist Friday” / “Don't remind me about dinner”</li>
+              <li>“Mark laundry as done” / “Delete the milk task”</li>
+              <li>“Open calendar” / “What's on my day?”</li>
             </ul>
-            <p className="mt-2">Tasks added from the Calendar tab land on the day you have selected. Everything runs on-device — no audio leaves your phone.</p>
           </div>
         </>
       )}

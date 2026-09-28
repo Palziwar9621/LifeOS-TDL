@@ -28,6 +28,9 @@ export interface Task {
   completed_occurrences: Record<string, true>;
   occurrence_overrides: Record<string, OccurrenceOverride>;
   reminder_minutes: number | null;
+  /** Explicit alarm on/off for this task (voice: "remind me" / "don't remind").
+      null = default behavior (alarm when reminder_minutes is set). */
+  remind_me?: boolean | null;
   estimated_minutes: number | null;
   actual_minutes: number | null;
   sort_order: number;

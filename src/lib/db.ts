@@ -544,6 +544,7 @@ export async function createTask(input: CreateTaskInput): Promise<Task> {
     completed_occurrences: {},
     occurrence_overrides: {},
     reminder_minutes: input.reminder_minutes ?? null,
+    remind_me: (input as any).remind_me ?? null,
     estimated_minutes: input.estimated_minutes ?? null,
     actual_minutes: null,
     sort_order: minSort - 1,

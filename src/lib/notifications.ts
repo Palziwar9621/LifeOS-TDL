@@ -98,6 +98,7 @@ export function startReminderScheduler() {
 
       for (const t of s.tasks) {
         if (t.deleted || t.archived || t.status === 'completed' || t.status === 'cancelled') continue;
+        if ((t as any).remind_me === false) continue; // per-task alarm off
         const fire = taskReminderFireTime(t);
         if (!fire) continue;
         if (t.reminder_minutes == null) continue;

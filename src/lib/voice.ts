@@ -1,13 +1,18 @@
-// LifeOS — voice assistant runtime: wake word ("Hey LifeOS"), speech
-// recognition, and command execution against the app's own db helpers.
+// LifeOS — voice assistant runtime (rebuilt sequentially).
 //
-// The Web Speech API is available in Chrome/Edge (desktop + Android WebView
-// on most devices). Where it's missing, the mic button says so honestly.
-// The wake-word listener runs only while the app is open (a background
-// mic would need a native service — deliberately out of scope here).
-import { parseCommand, matchesWakeWord, stripWakeWord } from './assistant';
+// Pipeline: speech (web API or Android native bridge) → text →
+//   1. Groq brain (Supabase Edge Function `assistant`) with full app context
+//      → tool calls (add_task / add_note / add_reminder / complete_task /
+//        delete_task / set_reminder / navigate / open_app / summarize_day)
+//   2. Offline fallback parser (assistant.ts) when network/edge fails.
+//
+// Executes tool calls against the app's own db helpers, so every write is
+// a normal LifeOS record: synced to Supabase, alarmed natively, visible
+// everywhere.
+import { parseCommand } from './assistant';
 import type { AssistantIntent } from './assistant';
-import { createTask, createNote, createReminder, dbState } from './db';
+import { askBrain, type AppContext, type ToolCall } from './brain';
+import { createTask, createNote, createReminder, updateTask, deleteTask, dbState, getSettings } from './db';
 import { todayStr } from './dates';
 import { parseQuickAdd } from './quickadd';
 
@@ -22,43 +27,36 @@ export function speechSupported(): boolean {
   if (typeof window === 'undefined') return false;
   return !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition || nativeSpeech());
 }
-function getSR(): SR | null {
-  return ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition) ?? null;
-}
 
 // --- Settings (persisted locally) ---
 export interface AssistantSettings {
   enabled: boolean;
-  wakeWord: string;       // spoken phrase that arms the assistant
+  wakeWord: string;
   listenContinuously: boolean;
+  useAI: boolean;          // true = Groq brain, false = offline parser only
 }
 const KEY = 'lifeos.assistant';
 export function getAssistantSettings(): AssistantSettings {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { enabled: false, wakeWord: 'hey lifeos', listenContinuously: true, ...JSON.parse(raw) };
+    if (raw) return { enabled: false, wakeWord: 'hey lifeos', listenContinuously: true, useAI: true, ...JSON.parse(raw) };
   } catch { /* ignore */ }
-  return { enabled: false, wakeWord: 'hey lifeos', listenContinuously: true };
+  return { enabled: false, wakeWord: 'hey lifeos', listenContinuously: true, useAI: true };
 }
 export function saveAssistantSettings(s: AssistantSettings): void {
   try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* ignore */ }
 }
 
-// --- Singleton recognizer with restart-on-end for continuous listening ---
+// --- Recognizer plumbing (web + native) ---
 let recog: SR | null = null;
 let wantListening = false;
 let onHeard: ((text: string, isFinal: boolean) => void) | null = null;
 let onError: ((err: string) => void) | null = null;
 
-// Native Android bridge (window.LifeOSSpeech): the page installs
-// callbacks on window.__lifeosSpeech and calls LifeOSSpeech.startContinuous()
-// / stopContinuous(); results arrive as __lifeosSpeech.onSpeechResult(text)
-// or onSpeechError(code).
 function nativeResult(text: string) { onHeard?.(text, true); }
 function nativePartial(text: string) { onHeard?.(text, false); }
 function nativeError(code: string) {
-  if (code === '6' || code === '7' || code === 'no_match') return; // benign
-  if (code === '8' || code === 'busy') return;
+  if (code === '6' || code === '7' || code === 'no_match' || code === '8' || code === 'busy') return;
   if (code === 'not_available' || code === 'exception') onError?.('Speech recognition not available on this device');
   else if (code === '9' || code === '10') onError?.('Microphone permission denied');
   else onError?.('Speech error ' + code);
@@ -71,12 +69,12 @@ export function installNativeSpeech(): void {
     onSpeechResult: nativeResult,
     onSpeechPartial: nativePartial,
     onSpeechError: nativeError,
-    onSpeechReady: () => { /* recognition armed */ },
+    onSpeechReady: () => { /* armed */ },
   };
 }
 
 function buildRecognizer(): SR | null {
-  const Ctor = getSR();
+  const Ctor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
   if (!Ctor) return null;
   const r = new Ctor();
   r.continuous = true;
@@ -104,7 +102,6 @@ function buildRecognizer(): SR | null {
     }
   };
   r.onend = () => {
-    // Continuous mode: Chrome ends sessions periodically — restart while wanted.
     if (wantListening) { try { r.start(); } catch { /* already started */ } }
   };
   return r;
@@ -117,7 +114,6 @@ export function startListening(
   onHeard = heard;
   onError = err ?? null;
   wantListening = true;
-  // Native bridge first (Android shell) — WebView lacks Web Speech API.
   const n = nativeSpeech();
   if (n && typeof n.startContinuous === 'function') {
     installNativeSpeech();
@@ -138,75 +134,180 @@ export function stopListening(): void {
 
 export function isListening(): boolean { return wantListening; }
 
-// --- Command execution: intents -> real writes through the app's db ---
-export interface CommandResult { ok: boolean; message: string; intent: AssistantIntent; }
+// --- Context for the brain ---
+export function buildAppContext(page: string, pageParams: Record<string, string>): AppContext {
+  const s = dbState();
+  const now = new Date();
+  return {
+    page,
+    pageParams,
+    today: todayStr(),
+    weekday: now.toLocaleDateString(undefined, { weekday: 'long' }),
+    time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+    projects: s.projects.filter((p) => !p.archived).map((p) => ({ id: p.id, name: p.name })),
+    categories: s.categories.map((c) => ({ id: c.id, name: c.name })),
+    recentTaskTitles: s.tasks.filter((t) => !t.deleted && !t.archived).slice(-15).map((t) => t.title),
+    todayTaskCount: s.tasks.filter((t) => !t.deleted && t.due_date === todayStr() && t.status !== 'completed').length,
+    routines: (s.routine_tasks ?? []).filter((r) => !r.archived).map((r) => r.title),
+  };
+}
+
+// --- Tool-call execution ---
+async function runTool(
+  call: ToolCall,
+  ctx: { navigate: (p: any, params?: Record<string, string>) => void },
+): Promise<string> {
+  const s = dbState();
+  switch (call.name) {
+    case 'add_task': {
+      const a = call.args;
+      const project = a.project_hint
+        ? s.projects.find((p) => p.name.toLowerCase().includes(String(a.project_hint).toLowerCase()))?.id ?? null
+        : null;
+      const task = await createTask({
+        title: a.title,
+        due_date: a.due_date ?? todayStr(),
+        due_time: a.due_time ?? null,
+        priority: (a.priority ?? 'medium') as any,
+        reminder_minutes: a.remind_me === false ? null : (a.reminder_minutes ?? 0),
+        remind_me: a.remind_me !== false,
+        project_id: project,
+      } as any);
+      // Alarm pipeline refreshes within a minute; nudge it now.
+      import('./nativeAlarms').then((m) => m.syncNativeAlarms());
+      const when = a.due_date ? ` for ${a.due_time ? a.due_time + ' on ' : ''}${a.due_date}` : '';
+      const ring = a.remind_me === false ? '' : ' Alarm on.';
+      return `Added task ${a.title}${when}.${ring}`;
+    }
+    case 'add_note': {
+      await createNote({ title: String(call.args.title).slice(0, 80), content: call.args.content ?? '' });
+      return `Note added: ${call.args.title}`;
+    }
+    case 'add_reminder': {
+      await createReminder({
+        title: call.args.title,
+        due_at: call.args.due_at ?? new Date(Date.now() + 3600_000).toISOString(),
+        priority: 'medium',
+      });
+      import('./nativeAlarms').then((m) => m.syncNativeAlarms());
+      return `Reminder set: ${call.args.title}`;
+    }
+    case 'complete_task':
+    case 'delete_task':
+    case 'set_reminder': {
+      const q = String(call.args.title_match ?? '').toLowerCase();
+      const t = s.tasks.find((x) => !x.deleted && !x.archived && x.title.toLowerCase().includes(q))
+        ?? s.tasks.find((x) => !x.deleted && !x.archived && q.includes(x.title.toLowerCase()));
+      if (!t) return `I couldn't find a task matching "${call.args.title_match}"`;
+      if (call.name === 'complete_task') {
+        await updateTask(t.id, { status: 'completed', completed_at: new Date().toISOString(), completed_at_date: todayStr() } as any);
+        return `Completed: ${t.title}`;
+      }
+      if (call.name === 'delete_task') {
+        await deleteTask(t.id);
+        return `Deleted: ${t.title}`;
+      }
+      const on = !!call.args.remind_me;
+      await updateTask(t.id, { remind_me: on, reminder_minutes: on ? (t.reminder_minutes ?? 0) : t.reminder_minutes } as any);
+      import('./nativeAlarms').then((m) => m.syncNativeAlarms());
+      return on ? `Reminders on for ${t.title}` : `Reminders off for ${t.title}`;
+    }
+    case 'navigate': {
+      ctx.navigate(call.args.page);
+      return `Opened ${call.args.page}`;
+    }
+    case 'open_app': {
+      const n = nativeSpeech();
+      // Android: the background service opens the app itself; from inside the
+      // app this is already the foreground. Desktop: focus the window.
+      try { (window as any).LifeOSNative?.openApp?.(); } catch { /* no-op */ }
+      return 'Opening LifeOS';
+    }
+    case 'summarize_day': {
+      const today = todayStr();
+      const tasks = s.tasks.filter((t) => !t.deleted && !t.archived && t.due_date === today && t.status !== 'completed');
+      const rems = s.reminders.filter((r) => (r.due_at ?? '').slice(0, 10) === today);
+      const names = tasks.slice(0, 5).map((t) => t.title + (t.due_time ? ` at ${t.due_time.slice(0, 5)}` : ''));
+      return `Today: ${tasks.length} task${tasks.length === 1 ? '' : 's'} and ${rems.length} reminder${rems.length === 1 ? '' : 's'}` + (names.length ? `. ${names.join(', ')}` : '');
+    }
+    default:
+      return `I don't know how to ${call.name}`;
+  }
+}
+
+// --- Main entry: spoken text → actions → spoken reply ---
+export interface CommandResult { ok: boolean; message: string; }
 
 export async function executeCommand(
   spoken: string,
   ctx: { page: string; pageParams: Record<string, string>; navigate: (p: any, params?: Record<string, string>) => void },
 ): Promise<CommandResult> {
-  const intent = parseCommand(spoken);
+  const settings = getAssistantSettings();
 
+  // 1) AI brain (when enabled): free-form understanding with app context.
+  if (settings.useAI) {
+    try {
+      const { reply, calls } = await askBrain(spoken, buildAppContext(ctx.page, ctx.pageParams));
+      const parts: string[] = [];
+      for (const c of calls) {
+        try { parts.push(await runTool(c, ctx)); } catch (e: any) { parts.push(e?.message ?? 'action failed'); }
+      }
+      const message = parts.length ? parts.join(' ') : (reply || "I couldn't map that to an action");
+      return { ok: parts.length > 0, message };
+    } catch {
+      // fall through to offline parser
+    }
+  }
+
+  // 2) Offline fallback parser (also the path when useAI is off).
+  const intent: AssistantIntent = parseCommand(spoken);
   switch (intent.kind) {
     case 'add_task': {
-      // Context: adding from Calendar with a selected date presets the date.
-      let presetDate = intent.presetDate;
-      let presetTime = intent.presetTime;
-      if (ctx.page === 'calendar' && !presetDate) {
-        const cal = (window as any).__lifeosCalendarDate as string | undefined;
-        if (cal) presetDate = cal;
-      }
       const p = parseQuickAdd(intent.text);
       await createTask({
         title: p.title,
-        due_date: presetDate ?? p.due_date ?? todayStr(),
-        due_time: presetTime ?? p.due_time,
+        due_date: intent.presetDate ?? p.due_date ?? todayStr(),
+        due_time: intent.presetTime ?? p.due_time,
         priority: (intent.priority ?? p.priority ?? 'medium') as any,
-        recurrence: p.recurrence,
-        recurrence_days: p.recurrence_days,
-        recurrence_anchor: presetDate ?? p.due_date ?? todayStr(),
-      });
-      return { ok: true, message: `Task added: ${p.title}`, intent };
+        reminder_minutes: 0,
+        remind_me: true,
+      } as any);
+      import('./nativeAlarms').then((m) => m.syncNativeAlarms());
+      return { ok: true, message: `Task added: ${p.title}` };
     }
     case 'add_reminder': {
       const p = parseQuickAdd(intent.text);
-      await createReminder({
-        title: intent.text || p.title,
-        due_at: intent.due_at ?? new Date(Date.now() + 3600_000).toISOString(),
-        priority: (p.priority ?? 'medium') as any,
-      });
-      return { ok: true, message: `Reminder set: ${intent.text}`, intent };
+      await createReminder({ title: intent.text || p.title, due_at: intent.due_at ?? new Date(Date.now() + 3600_000).toISOString(), priority: 'medium' });
+      import('./nativeAlarms').then((m) => m.syncNativeAlarms());
+      return { ok: true, message: `Reminder set: ${intent.text}` };
     }
     case 'add_note': {
       await createNote({ title: intent.title.slice(0, 80) || 'Voice note', content: intent.content });
-      return { ok: true, message: `Note added: ${intent.title}`, intent };
+      return { ok: true, message: `Note added: ${intent.title}` };
     }
     case 'navigate': {
       ctx.navigate(intent.page);
-      return { ok: true, message: `Opened ${intent.page}`, intent };
+      return { ok: true, message: `Opened ${intent.page}` };
     }
     case 'summarize_day': {
       const s = dbState();
       const today = todayStr();
       const tasks = s.tasks.filter((t) => !t.deleted && !t.archived && t.due_date === today && t.status !== 'completed');
       const rems = s.reminders.filter((r) => (r.due_at ?? '').slice(0, 10) === today);
-      const parts = [`${tasks.length} task${tasks.length === 1 ? '' : 's'}`, `${rems.length} reminder${rems.length === 1 ? '' : 's'}`];
-      const first = tasks.slice(0, 3).map((t) => t.title);
-      const msg = `Today you have ${parts.join(' and ')}` + (first.length ? `. Next up: ${first.join(', ')}` : '');
-      return { ok: true, message: msg, intent };
+      const msg = `Today you have ${tasks.length} task${tasks.length === 1 ? '' : 's'} and ${rems.length} reminder${rems.length === 1 ? '' : 's'}`;
+      return { ok: true, message: msg };
     }
     default:
-      return { ok: false, message: "I didn't catch a command. Try \"add task…\", \"remind me to…\", \"open calendar\" or \"what's on my day\".", intent };
+      return { ok: false, message: "I didn't catch a command. Try \"add task…\", \"remind me to…\", \"open calendar\" or \"what's on my day\"." };
   }
 }
 
-// --- Wake-word pipeline: feed every final transcript through here ---
-// Returns a command string when the wake word was heard (with the command
-// text after it, or '' meaning "wake word alone — start listening for the
-// command"). Returns null when the speech is unrelated.
+// --- Wake-word helpers (kept from previous version) ---
 export function extractWakeCommand(text: string, settings: AssistantSettings): string | null {
   const t = text.trim();
   if (!t) return null;
-  if (matchesWakeWord(t, settings.wakeWord)) return stripWakeWord(t, settings.wakeWord);
-  return null;
+  const w = settings.wakeWord.toLowerCase();
+  const i = t.toLowerCase().indexOf(w);
+  if (i === -1) return null;
+  return t.slice(i + w.length).replace(/^[\s,.]+/, '');
 }
