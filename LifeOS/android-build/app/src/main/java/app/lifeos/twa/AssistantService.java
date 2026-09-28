@@ -5,6 +5,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
@@ -37,6 +38,8 @@ public class AssistantService extends Service {
 
     private SpeechRecognizer recognizer;
     private String wakeWord = "hey lifeos";
+    private long lastWakeFiredAt = 0;
+    private long pausedUntil = 0;
 
     @Override
     public void onCreate() {
@@ -66,6 +69,12 @@ public class AssistantService extends Service {
 
     private void startListening() {
         if (!SpeechRecognizer.isRecognitionAvailable(this)) return;
+        // Pause window after a wake event: don't re-trigger while the popup
+        // is up (and give the user time to speak the command).
+        if (System.currentTimeMillis() < pausedUntil) {
+            new android.os.Handler(getMainLooper()).postDelayed(this::startListening, 1000);
+            return;
+        }
         if (recognizer == null) recognizer = SpeechRecognizer.createSpeechRecognizer(this);
 
         recognizer.setRecognitionListener(new RecognitionListener() {
@@ -91,11 +100,32 @@ public class AssistantService extends Service {
         i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toString());
         recognizer.startListening(i);
+        muteBeep();
+    }
+
+    /** Android plays a beep on the media stream at each recognition start —
+     *  with a restart loop that's a tweet every few seconds. Mute the stream
+     *  for the beep window, then restore. */
+    private void muteBeep() {
+        try {
+            android.media.AudioManager am = (android.media.AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            am.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC,
+                    android.media.AudioManager.ADJUST_MUTE, 0);
+            new android.os.Handler(getMainLooper()).postDelayed(() -> {
+                try {
+                    am.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC,
+                            android.media.AudioManager.ADJUST_UNMUTE, 0);
+                } catch (Exception ignored) {}
+            }, 800);
+        } catch (Exception ignored) {}
     }
 
     private boolean heardWake(String t) {
         if (t == null) return false;
         if (!t.toLowerCase().contains(wakeWord)) return false;
+        long now = System.currentTimeMillis();
+        if (now - lastWakeFiredAt < 20_000) return true; // cooldown: swallow repeats
+        lastWakeFiredAt = now;
         // Wake word heard — surface a full-screen notification (opens the app
         // into command mode). Android requires user interaction to launch
         // activities from the background; the notification is that touch.
@@ -114,6 +144,9 @@ public class AssistantService extends Service {
                     .build();
             nm.notify(NOTIF_ID + 1, n);
         }
+        // Pause the loop so the popup isn't instantly re-triggered.
+        pausedUntil = now + 20_000;
+        if (recognizer != null) { try { recognizer.stopListening(); } catch (Exception ignored) {} }
         return true;
     }
 
@@ -122,8 +155,9 @@ public class AssistantService extends Service {
             try { recognizer.destroy(); } catch (Exception ignored) {}
             recognizer = null;
         }
-        // Small delay avoids tight-looping when the mic service is busy.
-        new android.os.Handler(getMainLooper()).postDelayed(this::startListening, 500);
+        // Recreate fresh: ERROR_CLIENT(5)/busy(8) mean the old instance is
+        // wedged — a short delay plus a new object clears it.
+        new android.os.Handler(getMainLooper()).postDelayed(this::startListening, 1200);
     }
 
     @Override

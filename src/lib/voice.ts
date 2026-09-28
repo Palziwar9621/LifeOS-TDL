@@ -57,6 +57,9 @@ function nativeResult(text: string) { onHeard?.(text, true); }
 function nativePartial(text: string) { onHeard?.(text, false); }
 function nativeError(code: string) {
   if (code === '6' || code === '7' || code === 'no_match' || code === '8' || code === 'busy') return;
+  // ERROR_CLIENT (5) is transient on many devices — the Android side now
+  // recreates the recognizer; here just surface a gentle note, not an error.
+  if (code === '5') return;
   if (code === 'not_available' || code === 'exception') onError?.('Speech recognition not available on this device');
   else if (code === '9' || code === '10') onError?.('Microphone permission denied');
   else onError?.('Speech error ' + code);

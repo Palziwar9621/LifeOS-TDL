@@ -86,12 +86,24 @@ export function VoiceAssistant() {
     if (!supported || busy) return;
     setArmed(true);
     speak('Listening…');
-    const stop = () => { /* recognition continues; command mode set */ };
     startListening(onTranscript, (err) => { speak(err); });
     setListening(true);
     if (armedTimer.current) window.clearTimeout(armedTimer.current);
     armedTimer.current = window.setTimeout(() => setArmed(false), 12_000);
   }, [supported, busy, onTranscript, speak]);
+
+  // Mic button = simple toggle: tap to talk, tap again to stop.
+  const micTap = useCallback(() => {
+    if (isListening()) {
+      stopListening();
+      setListening(false);
+      setArmed(false);
+      setCaption(null);
+    } else {
+      toggleContinuous();
+      oneShot();
+    }
+  }, [toggleContinuous, oneShot]);
 
   // Cleanup on unmount
   useEffect(() => () => { stopListening(); }, []);
@@ -110,12 +122,17 @@ export function VoiceAssistant() {
 
   return (
     <>
-      {/* Floating mic — sits above the bottom nav, out of the way */}
+      {/* Floating mic — explicit colors (theme classes rendered black/invisible) */}
       <button
         aria-label="Voice assistant"
-        onClick={() => { if (!listening) toggleContinuous(); oneShot(); }}
+        onClick={micTap}
+        style={state === 'armed' || state === 'working'
+          ? { background: '#4f46e5', color: '#fff' }
+          : state === 'awake'
+            ? { background: '#10b981', color: '#fff' }
+            : { background: '#0f172a', color: '#e2e8f0' }}
         className={`fixed z-40 bottom-20 right-4 h-12 w-12 rounded-full shadow-lg flex items-center justify-center transition md:bottom-6
-          ${state === 'armed' ? 'bg-brand-600 text-white animate-pulse' : state === 'awake' ? 'bg-emerald-500 text-white' : 'btn-secondary'}`}
+          ${state === 'armed' ? 'animate-pulse' : ''} ring-1 ring-white/20`}
       >
         <Icon name="mic" className="h-5 w-5" />
       </button>
