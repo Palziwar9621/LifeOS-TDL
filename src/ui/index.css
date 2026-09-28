@@ -35,12 +35,12 @@
    -------------------------------------------------------------- */
 @layer base {
   /* --------------------------------------------------------------
-     Premium themes. Role-correct scales: in light themes the slate
-     ramp goes light→dark as usual; in dark themes 50–300 stay DARK
-     (surface tones: 800/900/950 are used for backgrounds, 50–300 for
-     hover/borders) while 400–700 become LIGHT text tones — matching
-     how the app's components use them (text-slate-200 on dark = main
-     text, bg-slate-900 = card). Contrast-checked ≥ 4.5:1 for text.
+     Premium themes. Role-correct scales matching the app's dark
+     utilities: dark themes keep Tailwind's light→dark ordering, with
+     200/300/400 as light TEXT tones, 600/700 as borders, 800/900/950
+     as dark SURFACES (page bg = 950, cards = 900, inputs = 800).
+     Contrast-checked for text ≥ 4.5:1.
+     -------------------------------------------------------------- */
      -------------------------------------------------------------- */
 
   /* 1) Zen Paper — calm, high-end paper light mode */
@@ -70,16 +70,19 @@
 
   /* 2) Deep Focus — sleek dark for night planning */
   html.theme-focus.dark {
-    --color-slate-50: #1a1d24;
-    --color-slate-100: #171a21;
-    --color-slate-200: #20242d;
-    --color-slate-300: #2a2f3a;
-    --color-slate-400: #8b93a3;
-    --color-slate-500: #a8b0bd;
-    --color-slate-600: #c3cad4;
-    --color-slate-700: #dde2e9;
-    --color-slate-800: #171b23;
-    --color-slate-900: #12151c;
+    /* Roles (matching the app's dark utilities): 950 page bg · 900 card ·
+       800 input/hover surface · 600–700 borders · 200–400 light text ·
+       500 muted text. Ordered light→dark like Tailwind's default. */
+    --color-slate-50: #dde2e9;
+    --color-slate-100: #c9d0da;
+    --color-slate-200: #e6eaf0;
+    --color-slate-300: #b6bfcc;
+    --color-slate-400: #97a1b0;
+    --color-slate-500: #7b8595;
+    --color-slate-600: #3a4150;
+    --color-slate-700: #2b3140;
+    --color-slate-800: #191d26;
+    --color-slate-900: #14171f;
     --color-slate-950: #0f1115;
     --color-brand-50: #1c1d33;
     --color-brand-100: #26284d;
@@ -145,16 +148,16 @@
 
   /* 5) Obsidian & Champagne — velvet-black dark, warm gold accents */
   html.theme-noir.dark {
-    --color-slate-50: #1a1a1f;
-    --color-slate-100: #17171c;
-    --color-slate-200: #212129;
-    --color-slate-300: #2d2d37;
-    --color-slate-400: #8f8f96;
-    --color-slate-500: #ababaf;
-    --color-slate-600: #c6c6cc;
-    --color-slate-700: #e0e0e4;
-    --color-slate-800: #191920;
-    --color-slate-900: #141419;
+    --color-slate-50: #e2e2e6;
+    --color-slate-100: #cfcfd4;
+    --color-slate-200: #e9e9ec;
+    --color-slate-300: #b9b9c0;
+    --color-slate-400: #99999f;
+    --color-slate-500: #7d7d84;
+    --color-slate-600: #35353f;
+    --color-slate-700: #28282f;
+    --color-slate-800: #18181e;
+    --color-slate-900: #131317;
     --color-slate-950: #101013;
     --color-brand-50: #221e13;
     --color-brand-100: #363020;
