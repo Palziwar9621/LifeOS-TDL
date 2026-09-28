@@ -118,15 +118,20 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
 
   try {
-    // Auth: verify the caller's JWT against the project.
+    // Auth: accept a user JWT (verified) OR the service_role key (for
+    // curl testing, same convention as the send-push function).
     const auth = req.headers.get('Authorization') ?? '';
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: auth } } },
-    );
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData?.user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: cors });
+    const token = auth.replace(/^Bearer\s+/i, '');
+    const serviceKey = Deno.env.get('SERVICE_ROLE_KEY') ?? '';
+    if (!serviceKey || token !== serviceKey) {
+      const supabase = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_ANON_KEY')!,
+        { global: { headers: { Authorization: auth } } },
+      );
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData?.user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: cors });
+    }
 
     const { spoken, ctx } = await req.json();
     if (!spoken || typeof spoken !== 'string') return new Response(JSON.stringify({ error: 'No spoken text' }), { status: 400, headers: cors });
