@@ -34,130 +34,138 @@
    60% background · 30% text & structure · 10% accent.
    -------------------------------------------------------------- */
 @layer base {
+  /* --------------------------------------------------------------
+     Premium themes. Role-correct scales: in light themes the slate
+     ramp goes light→dark as usual; in dark themes 50–300 stay DARK
+     (surface tones: 800/900/950 are used for backgrounds, 50–300 for
+     hover/borders) while 400–700 become LIGHT text tones — matching
+     how the app's components use them (text-slate-200 on dark = main
+     text, bg-slate-900 = card). Contrast-checked ≥ 4.5:1 for text.
+     -------------------------------------------------------------- */
+
   /* 1) Zen Paper — calm, high-end paper light mode */
   html.theme-zen {
-    --color-slate-50: #f8f9fa;
-    --color-slate-100: #f1f3f4;
-    --color-slate-200: #e3e6e8;
-    --color-slate-300: #cdd2d5;
-    --color-slate-400: #8a9196;
-    --color-slate-500: #5f666b;
-    --color-slate-600: #4a5054;
-    --color-slate-700: #3a3e41;
-    --color-slate-800: #2b2e30;
-    --color-slate-900: #1e2022;
-    --color-slate-950: #17191b;
-    --color-brand-50: #faece7;
-    --color-brand-100: #f4d8cf;
-    --color-brand-200: #e8b5a5;
-    --color-brand-300: #dd927d;
+    --color-slate-50: #fafbfb;
+    --color-slate-100: #f6f7f7;
+    --color-slate-200: #ecefec;
+    --color-slate-300: #d7dad9;
+    --color-slate-400: #9aa09e;
+    --color-slate-500: #6b716e;
+    --color-slate-600: #535856;
+    --color-slate-700: #41453f;
+    --color-slate-800: #2f3230;
+    --color-slate-900: #232624;
+    --color-slate-950: #1a1c1b;
+    --color-brand-50: #fbeeea;
+    --color-brand-100: #f6dbd2;
+    --color-brand-200: #ecbba9;
+    --color-brand-300: #e09880;
     --color-brand-400: #d37055;
-    --color-brand-500: #c4634a;
-    --color-brand-600: #b05339;
-    --color-brand-700: #94452e;
-    --color-brand-800: #783726;
-    --color-brand-900: #5c2a1e;
+    --color-brand-500: #c05f43;
+    --color-brand-600: #a84f36;
+    --color-brand-700: #8c412d;
+    --color-brand-800: #703424;
+    --color-brand-900: #54281c;
   }
 
-  /* 2) Deep Focus — sleek high-contrast dark for night planning */
+  /* 2) Deep Focus — sleek dark for night planning */
   html.theme-focus.dark {
-    --color-slate-50: #171a20;
-    --color-slate-100: #1b1e25;
-    --color-slate-200: #232730;
-    --color-slate-300: #2e333e;
-    --color-slate-400: #6b7280;
-    --color-slate-500: #9aa1ac;
-    --color-slate-600: #b6bcc6;
-    --color-slate-700: #ccd1d9;
-    --color-slate-800: #1b1f2a;
-    --color-slate-900: #151821;
+    --color-slate-50: #1a1d24;
+    --color-slate-100: #171a21;
+    --color-slate-200: #20242d;
+    --color-slate-300: #2a2f3a;
+    --color-slate-400: #8b93a3;
+    --color-slate-500: #a8b0bd;
+    --color-slate-600: #c3cad4;
+    --color-slate-700: #dde2e9;
+    --color-slate-800: #171b23;
+    --color-slate-900: #12151c;
     --color-slate-950: #0f1115;
-    --color-brand-50: #17182c;
-    --color-brand-100: #22244a;
-    --color-brand-200: #3b3d80;
-    --color-brand-300: #5456c4;
-    --color-brand-400: #6d6fe0;
+    --color-brand-50: #1c1d33;
+    --color-brand-100: #26284d;
+    --color-brand-200: #3f4287;
+    --color-brand-300: #6f71e8;
+    --color-brand-400: #8385ee;
     --color-brand-500: #6366f1;
-    --color-brand-600: #7578f3;
-    --color-brand-700: #8f91f6;
-    --color-brand-800: #aaabf9;
-    --color-brand-900: #c6c6fb;
+    --color-brand-600: #7b7ef4;
+    --color-brand-700: #9799f7;
+    --color-brand-800: #b3b4fa;
+    --color-brand-900: #cfcffb;
   }
 
   /* 3) Editorial Minimal — warm alabaster + espresso + olive bronze */
   html.theme-editorial {
-    --color-slate-50: #fbf9f5;
-    --color-slate-100: #f4f0e8;
-    --color-slate-200: #e8e1d4;
-    --color-slate-300: #d4cab7;
-    --color-slate-400: #9a8d7a;
-    --color-slate-500: #6f6353;
-    --color-slate-600: #584e41;
-    --color-slate-700: #463d33;
-    --color-slate-800: #383028;
+    --color-slate-50: #fcfaf6;
+    --color-slate-100: #f7f3ea;
+    --color-slate-200: #ede7d9;
+    --color-slate-300: #dbd2bf;
+    --color-slate-400: #a4977f;
+    --color-slate-500: #77694f;
+    --color-slate-600: #5d513c;
+    --color-slate-700: #4a4030;
+    --color-slate-800: #393125;
     --color-slate-900: #2c221e;
-    --color-slate-950: #221a16;
-    --color-brand-50: #f3f0e8;
-    --color-brand-100: #e7e1d2;
-    --color-brand-200: #cfc4ab;
-    --color-brand-300: #b3a684;
-    --color-brand-400: #98876a;
+    --color-slate-950: #211a16;
+    --color-brand-50: #f2efe7;
+    --color-brand-100: #e5dfcf;
+    --color-brand-200: #cabfa4;
+    --color-brand-300: #ada077;
+    --color-brand-400: #96876a;
     --color-brand-500: #857555;
-    --color-brand-600: #746347;
-    --color-brand-700: #615239;
-    --color-brand-800: #4e412d;
-    --color-brand-900: #3b3122;
+    --color-brand-600: #756546;
+    --color-brand-700: #625437;
+    --color-brand-800: #4f4329;
+    --color-brand-900: #3c321e;
   }
 
   /* 4) Soft Nordic — airy ice gray + midnight blue + sage */
   html.theme-nordic {
-    --color-slate-50: #f3f5f7;
-    --color-slate-100: #eaeef2;
-    --color-slate-200: #d9dfe6;
-    --color-slate-300: #c2cbd4;
-    --color-slate-400: #8493a3;
-    --color-slate-500: #5c6b7c;
-    --color-slate-600: #47566a;
-    --color-slate-700: #364457;
-    --color-slate-800: #273343;
-    --color-slate-900: #1a2434;
+    --color-slate-50: #f6f8f9;
+    --color-slate-100: #f0f3f5;
+    --color-slate-200: #e2e7eb;
+    --color-slate-300: #c9d2d9;
+    --color-slate-400: #8b99a7;
+    --color-slate-500: #5f6f7e;
+    --color-slate-600: #4a5a68;
+    --color-slate-700: #38485a;
+    --color-slate-800: #293649;
+    --color-slate-900: #1d2a3a;
     --color-slate-950: #111827;
-    --color-brand-50: #e6f7f1;
-    --color-brand-100: #ccefdf;
-    --color-brand-200: #9adfc4;
-    --color-brand-300: #66d0a8;
-    --color-brand-400: #3fc48f;
+    --color-brand-50: #e9f8f2;
+    --color-brand-100: #d1f0e3;
+    --color-brand-200: #a3e0c9;
+    --color-brand-300: #6fcdac;
+    --color-brand-400: #3cba92;
     --color-brand-500: #10b981;
-    --color-brand-600: #0da271;
-    --color-brand-700: #0a875e;
-    --color-brand-800: #076b4b;
-    --color-brand-900: #055038;
+    --color-brand-600: #0e9e6f;
+    --color-brand-700: #0b825b;
+    --color-brand-800: #086647;
+    --color-brand-900: #064b35;
   }
 
-  /* 5) Obsidian & Champagne — my own: velvet-black dark with warm
-        champagne-gold accents; quiet luxury, easy on the eyes */
+  /* 5) Obsidian & Champagne — velvet-black dark, warm gold accents */
   html.theme-noir.dark {
-    --color-slate-50: #191a1f;
-    --color-slate-100: #1d1e24;
-    --color-slate-200: #26272f;
-    --color-slate-300: #33343e;
-    --color-slate-400: #77787f;
-    --color-slate-500: #a3a4ab;
-    --color-slate-600: #c3c4ca;
-    --color-slate-700: #d9dada;
-    --color-slate-800: #1d1e24;
-    --color-slate-900: #16171c;
+    --color-slate-50: #1a1a1f;
+    --color-slate-100: #17171c;
+    --color-slate-200: #212129;
+    --color-slate-300: #2d2d37;
+    --color-slate-400: #8f8f96;
+    --color-slate-500: #ababaf;
+    --color-slate-600: #c6c6cc;
+    --color-slate-700: #e0e0e4;
+    --color-slate-800: #191920;
+    --color-slate-900: #141419;
     --color-slate-950: #101013;
-    --color-brand-50: #201d14;
-    --color-brand-100: #332e1d;
-    --color-brand-200: #5c5233;
-    --color-brand-300: #8a7b4c;
-    --color-brand-400: #ac9a63;
-    --color-brand-500: #c9a96a;
-    --color-brand-600: #d8ba7e;
-    --color-brand-700: #e2c995;
-    --color-brand-800: #ead8ad;
-    --color-brand-900: #f2e6c6;
+    --color-brand-50: #221e13;
+    --color-brand-100: #363020;
+    --color-brand-200: #5f5434;
+    --color-brand-300: #998652;
+    --color-brand-400: #c9a96a;
+    --color-brand-500: #d4b478;
+    --color-brand-600: #dfc089;
+    --color-brand-700: #e9cfa0;
+    --color-brand-800: #f1dcb6;
+    --color-brand-900: #f8e8cc;
   }
 }
 
