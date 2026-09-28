@@ -144,15 +144,24 @@ Deno.serve(async (req) => {
       { role: 'user', content: spoken },
     ];
 
-    const res = await fetch(GROQ_URL, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: MODEL, messages, tools: TOOLS, tool_choice: 'auto', temperature: 0.1, max_tokens: 500 }),
-    });
+    // Try the preferred model, fall back through Groq's catalog if it was
+    // renamed/retired (prevents hard outages when Groq changes model IDs).
+    const candidates = [MODEL, 'llama-3.1-8b-instant', 'openai/gpt-oss-20b', 'gemma2-9b-it'];
+    let res: Response | null = null;
+    let lastErr = '';
+    for (const model of candidates) {
+      const r = await fetch(GROQ_URL, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, messages, tools: TOOLS, tool_choice: 'auto', temperature: 0.1, max_tokens: 500 }),
+      });
+      if (r.ok) { res = r; break; }
+      lastErr = `${r.status}: ${(await r.text()).slice(0, 200)}`;
+      if (r.status === 401 || r.status === 429) break; // key/billing problem — no point trying other models
+    }
 
-    if (!res.ok) {
-      const t = await res.text();
-      return new Response(JSON.stringify({ error: `AI error ${res.status}: ${t.slice(0, 200)}` }), { status: 502, headers: cors });
+    if (!res) {
+      return new Response(JSON.stringify({ error: `AI error ${lastErr}` }), { status: 502, headers: cors });
     }
 
     const out = await res.json();
