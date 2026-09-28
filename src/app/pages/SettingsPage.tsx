@@ -17,7 +17,7 @@ import { createTask } from '../../lib/db';
 type Section = 'account' | 'appearance' | 'notifications' | 'categories' | 'tags' | 'sync' | 'data' | 'security' | 'about';
 
 export function SettingsPage() {
-  const { theme, setTheme, toast, signOut: appSignOut } = useApp();
+  const { theme, setTheme, premiumTheme, setPremiumTheme, toast, signOut: appSignOut } = useApp();
   const s = dbState();
   const profile = getProfile();
   const { confirm, confirmEl } = useConfirm();
@@ -49,7 +49,7 @@ export function SettingsPage() {
 
         <div className="space-y-4">
           {section === 'account' && <AccountSection profile={profile} toast={toast} />}
-          {section === 'appearance' && <AppearanceSection theme={theme} setTheme={setTheme} />}
+          {section === 'appearance' && <AppearanceSection theme={theme} setTheme={setTheme} premiumTheme={premiumTheme} setPremiumTheme={setPremiumTheme} />}
           {section === 'notifications' && <NotificationsSection toast={toast} />}
           {section === 'categories' && <CategoriesSection toast={toast} />}
           {section === 'sync' && <SyncSection toast={toast} />}
@@ -95,10 +95,20 @@ function AccountSection({ profile, toast }: any) {
   );
 }
 
-function AppearanceSection({ theme, setTheme }: any) {
+function AppearanceSection({ theme, setTheme, premiumTheme, setPremiumTheme }: any) {
+  const THEMES: { key: string; name: string; desc: string; bg: string; fg: string; accent: string; dark: boolean }[] = [
+    { key: 'zen', name: 'Zen Paper', desc: 'Calm light · terracotta', bg: '#F8F9FA', fg: '#1E2022', accent: '#D37055', dark: false },
+    { key: 'focus', name: 'Deep Focus', desc: 'Sleek dark · indigo', bg: '#0F1115', fg: '#E1E2E6', accent: '#6366F1', dark: true },
+    { key: 'editorial', name: 'Editorial Minimal', desc: 'Warm cream · olive bronze', bg: '#FBF9F5', fg: '#2C221E', accent: '#857555', dark: false },
+    { key: 'nordic', name: 'Soft Nordic', desc: 'Ice gray · sage green', bg: '#F3F5F7', fg: '#111827', accent: '#10B981', dark: false },
+    { key: 'noir', name: 'Obsidian & Champagne', desc: 'Velvet black · gold', bg: '#101013', fg: '#E1E2E6', accent: '#C9A96A', dark: true },
+  ];
+
   return (
     <section className="card p-5">
       <h2 className="section-title mb-4">Appearance</h2>
+
+      <p className="label">Mode</p>
       <div className="grid grid-cols-3 gap-2">
         {(['light', 'dark', 'system'] as const).map((t) => (
           <button key={t} className={`rounded-2xl p-4 text-sm font-semibold capitalize ring-1 transition ${theme === t ? 'ring-2 ring-brand-600 bg-brand-50 dark:bg-brand-900/30' : 'ring-slate-900/10 dark:ring-white/10 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
@@ -108,7 +118,34 @@ function AppearanceSection({ theme, setTheme }: any) {
           </button>
         ))}
       </div>
-      <p className="mt-3 text-xs muted">Your choice is remembered on this device.</p>
+
+      <p className="label mt-5">Premium theme</p>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <button
+          className={`rounded-2xl p-4 text-left ring-1 transition ${premiumTheme == null ? 'ring-2 ring-brand-600 bg-brand-50 dark:bg-brand-900/30' : 'ring-slate-900/10 dark:ring-white/10 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+          onClick={() => setPremiumTheme(null)}>
+          <span className="mb-2 flex gap-1">
+            {['#F1F5F9', '#334155', '#6366F1'].map((c) => <span key={c} className="h-5 w-5 rounded-full ring-1 ring-black/10" style={{ background: c }} />)}
+          </span>
+          <span className="block text-sm font-semibold">Default</span>
+          <span className="text-xs muted">Classic LifeOS look</span>
+        </button>
+        {THEMES.map((t) => (
+          <button
+            key={t.key}
+            className={`rounded-2xl p-4 text-left ring-1 transition ${premiumTheme === t.key ? 'ring-2 ring-brand-600 bg-brand-50 dark:bg-brand-900/30' : 'ring-slate-900/10 dark:ring-white/10 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+            onClick={() => setPremiumTheme(t.key)}>
+            <span className="mb-2 flex gap-1">
+              <span className="h-5 w-5 rounded-full ring-1 ring-black/10" style={{ background: t.bg }} />
+              <span className="h-5 w-5 rounded-full ring-1 ring-black/10" style={{ background: t.fg }} />
+              <span className="h-5 w-5 rounded-full ring-1 ring-black/10" style={{ background: t.accent }} />
+            </span>
+            <span className="block text-sm font-semibold">{t.name}</span>
+            <span className="text-xs muted">{t.desc}</span>
+          </button>
+        ))}
+      </div>
+      <p className="mt-3 text-xs muted">Dark themes (Deep Focus, Obsidian & Champagne) work best with Mode set to Dark. Your choice is remembered on this device.</p>
     </section>
   );
 }

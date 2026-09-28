@@ -27,6 +27,140 @@
   * { scrollbar-width: thin; scrollbar-color: rgb(148 163 184 / 0.4) transparent; }
 }
 
+/* --------------------------------------------------------------
+   Premium themes — each overrides Tailwind's slate (background/
+   structure) and brand (accent) scales, restyling the whole app
+   without touching a single component.
+   60% background · 30% text & structure · 10% accent.
+   -------------------------------------------------------------- */
+@layer base {
+  /* 1) Zen Paper — calm, high-end paper light mode */
+  html.theme-zen {
+    --color-slate-50: #f8f9fa;
+    --color-slate-100: #f1f3f4;
+    --color-slate-200: #e3e6e8;
+    --color-slate-300: #cdd2d5;
+    --color-slate-400: #8a9196;
+    --color-slate-500: #5f666b;
+    --color-slate-600: #4a5054;
+    --color-slate-700: #3a3e41;
+    --color-slate-800: #2b2e30;
+    --color-slate-900: #1e2022;
+    --color-slate-950: #17191b;
+    --color-brand-50: #faece7;
+    --color-brand-100: #f4d8cf;
+    --color-brand-200: #e8b5a5;
+    --color-brand-300: #dd927d;
+    --color-brand-400: #d37055;
+    --color-brand-500: #c4634a;
+    --color-brand-600: #b05339;
+    --color-brand-700: #94452e;
+    --color-brand-800: #783726;
+    --color-brand-900: #5c2a1e;
+  }
+
+  /* 2) Deep Focus — sleek high-contrast dark for night planning */
+  html.theme-focus.dark {
+    --color-slate-50: #171a20;
+    --color-slate-100: #1b1e25;
+    --color-slate-200: #232730;
+    --color-slate-300: #2e333e;
+    --color-slate-400: #6b7280;
+    --color-slate-500: #9aa1ac;
+    --color-slate-600: #b6bcc6;
+    --color-slate-700: #ccd1d9;
+    --color-slate-800: #1b1f2a;
+    --color-slate-900: #151821;
+    --color-slate-950: #0f1115;
+    --color-brand-50: #17182c;
+    --color-brand-100: #22244a;
+    --color-brand-200: #3b3d80;
+    --color-brand-300: #5456c4;
+    --color-brand-400: #6d6fe0;
+    --color-brand-500: #6366f1;
+    --color-brand-600: #7578f3;
+    --color-brand-700: #8f91f6;
+    --color-brand-800: #aaabf9;
+    --color-brand-900: #c6c6fb;
+  }
+
+  /* 3) Editorial Minimal — warm alabaster + espresso + olive bronze */
+  html.theme-editorial {
+    --color-slate-50: #fbf9f5;
+    --color-slate-100: #f4f0e8;
+    --color-slate-200: #e8e1d4;
+    --color-slate-300: #d4cab7;
+    --color-slate-400: #9a8d7a;
+    --color-slate-500: #6f6353;
+    --color-slate-600: #584e41;
+    --color-slate-700: #463d33;
+    --color-slate-800: #383028;
+    --color-slate-900: #2c221e;
+    --color-slate-950: #221a16;
+    --color-brand-50: #f3f0e8;
+    --color-brand-100: #e7e1d2;
+    --color-brand-200: #cfc4ab;
+    --color-brand-300: #b3a684;
+    --color-brand-400: #98876a;
+    --color-brand-500: #857555;
+    --color-brand-600: #746347;
+    --color-brand-700: #615239;
+    --color-brand-800: #4e412d;
+    --color-brand-900: #3b3122;
+  }
+
+  /* 4) Soft Nordic — airy ice gray + midnight blue + sage */
+  html.theme-nordic {
+    --color-slate-50: #f3f5f7;
+    --color-slate-100: #eaeef2;
+    --color-slate-200: #d9dfe6;
+    --color-slate-300: #c2cbd4;
+    --color-slate-400: #8493a3;
+    --color-slate-500: #5c6b7c;
+    --color-slate-600: #47566a;
+    --color-slate-700: #364457;
+    --color-slate-800: #273343;
+    --color-slate-900: #1a2434;
+    --color-slate-950: #111827;
+    --color-brand-50: #e6f7f1;
+    --color-brand-100: #ccefdf;
+    --color-brand-200: #9adfc4;
+    --color-brand-300: #66d0a8;
+    --color-brand-400: #3fc48f;
+    --color-brand-500: #10b981;
+    --color-brand-600: #0da271;
+    --color-brand-700: #0a875e;
+    --color-brand-800: #076b4b;
+    --color-brand-900: #055038;
+  }
+
+  /* 5) Obsidian & Champagne — my own: velvet-black dark with warm
+        champagne-gold accents; quiet luxury, easy on the eyes */
+  html.theme-noir.dark {
+    --color-slate-50: #191a1f;
+    --color-slate-100: #1d1e24;
+    --color-slate-200: #26272f;
+    --color-slate-300: #33343e;
+    --color-slate-400: #77787f;
+    --color-slate-500: #a3a4ab;
+    --color-slate-600: #c3c4ca;
+    --color-slate-700: #d9dada;
+    --color-slate-800: #1d1e24;
+    --color-slate-900: #16171c;
+    --color-slate-950: #101013;
+    --color-brand-50: #201d14;
+    --color-brand-100: #332e1d;
+    --color-brand-200: #5c5233;
+    --color-brand-300: #8a7b4c;
+    --color-brand-400: #ac9a63;
+    --color-brand-500: #c9a96a;
+    --color-brand-600: #d8ba7e;
+    --color-brand-700: #e2c995;
+    --color-brand-800: #ead8ad;
+    --color-brand-900: #f2e6c6;
+  }
+}
+
 @layer components {
   .card {
     @apply rounded-2xl bg-white dark:bg-slate-900 shadow-[0_1px_2px_rgb(15_23_42_/_0.06),0_8px_24px_rgb(15_23_42_/_0.06)] ring-1 ring-slate-900/5 dark:ring-white/10;

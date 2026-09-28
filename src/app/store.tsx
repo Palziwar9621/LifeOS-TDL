@@ -18,12 +18,21 @@ export type ToastKind = 'info' | 'success' | 'error';
 
 export interface Toast { id: number; msg: string; kind: ToastKind; }
 
+export type PremiumTheme = 'zen' | 'focus' | 'editorial' | 'nordic' | 'noir';
+
+export function applyPremiumTheme(root: HTMLElement, t: PremiumTheme | null): void {
+  for (const c of ['theme-zen', 'theme-focus', 'theme-editorial', 'theme-nordic', 'theme-noir']) root.classList.remove(c);
+  if (t) root.classList.add(`theme-${t}`);
+}
+
 interface AppContextShape {
   session: Session | null;
   authLoading: boolean;
   configured: boolean;
   theme: 'light' | 'dark' | 'system';
   setTheme: (t: 'light' | 'dark' | 'system') => void;
+  premiumTheme: PremiumTheme | null;
+  setPremiumTheme: (t: PremiumTheme | null) => void;
   page: Page;
   navigate: (p: Page, params?: Record<string, string>) => void;
   pageParams: Record<string, string>;
@@ -54,6 +63,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [configured, setConfigured] = useState<boolean>(() => hasSupabase() || isDemoMode());
   const [theme, setThemeState] = useState<'light' | 'dark' | 'system'>(
     () => (localStorage.getItem('lifeos.theme') as any) ?? 'system'
+  );
+  const [premiumTheme, setPremiumThemeState] = useState<PremiumTheme | null>(
+    () => (localStorage.getItem('lifeos.premiumTheme') as PremiumTheme) ?? null
   );
   const [page, setPage] = useState<Page>('home');
   const [pageParams, setPageParams] = useState<Record<string, string>>({});
@@ -103,12 +115,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
       root.classList.toggle('dark', dark);
       root.style.colorScheme = dark ? 'dark' : 'light';
+      applyPremiumTheme(root, premiumTheme);
     };
     apply();
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
     mq.addEventListener('change', apply);
     return () => mq.removeEventListener('change', apply);
-  }, [theme]);
+  }, [theme, premiumTheme]);
 
   // Initialize store when a session appears
   useEffect(() => {
@@ -157,6 +170,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try { localStorage.setItem('lifeos.theme', t); } catch { /* ignore */ }
   }, []);
 
+  const setPremiumTheme = useCallback((t: PremiumTheme | null) => {
+    setPremiumThemeState(t);
+    try {
+      if (t) localStorage.setItem('lifeos.premiumTheme', t);
+      else localStorage.removeItem('lifeos.premiumTheme');
+    } catch { /* ignore */ }
+  }, []);
+
   const signOut = useCallback(async () => {
     await authSignOut();
     await resetStore();
@@ -171,9 +192,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [toast]);
 
   const value = useMemo<AppContextShape>(() => ({
-    session, authLoading, configured: configured || isDemoMode(), theme, setTheme, page, navigate, pageParams,
+    session, authLoading, configured: configured || isDemoMode(), theme, setTheme, premiumTheme, setPremiumTheme, page, navigate, pageParams,
     toast, signOut, syncNow, online, pendingOps, version,
-  }), [session, authLoading, configured, theme, setTheme, page, navigate, pageParams, toast, signOut, syncNow, online, pendingOps, version]);
+  }), [session, authLoading, configured, theme, setTheme, premiumTheme, setPremiumTheme, page, navigate, pageParams, toast, signOut, syncNow, online, pendingOps, version]);
 
   return (
     <AppContext.Provider value={value}>
