@@ -18,7 +18,7 @@ export type ToastKind = 'info' | 'success' | 'error';
 
 export interface Toast { id: number; msg: string; kind: ToastKind; }
 
-export type PremiumTheme = 'zen' | 'focus' | 'editorial' | 'nordic' | 'noir';
+export type PremiumTheme = 'zen' | 'focus' | 'nordic' | 'noir';
 
 export function applyPremiumTheme(root: HTMLElement, t: PremiumTheme | null): void {
   for (const c of ['theme-zen', 'theme-focus', 'theme-editorial', 'theme-nordic', 'theme-noir']) root.classList.remove(c);
@@ -67,8 +67,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [premiumTheme, setPremiumThemeState] = useState<PremiumTheme | null>(
     () => (localStorage.getItem('lifeos.premiumTheme') as PremiumTheme) ?? null
   );
-  const [page, setPage] = useState<Page>('home');
-  const [pageParams, setPageParams] = useState<Record<string, string>>({});
+  const [page, setPage] = useState<Page>(() => {
+    // Restore the page across pull-to-refresh reloads (app shell reloads
+    // the whole SPA); falls back to Home on a fresh session.
+    try { return (sessionStorage.getItem('lifeos.page') as Page) ?? 'home'; } catch { return 'home'; }
+  });
+  const [pageParams, setPageParams] = useState<Record<string, string>>(() => {
+    try { return JSON.parse(sessionStorage.getItem('lifeos.pageParams') ?? '{}'); } catch { return {}; }
+  });
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [online, setOnline] = useState(getOnline());
   const [pendingOps, setPendingOps] = useState(0);
@@ -159,9 +165,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const navigate = useCallback((p: Page, params?: Record<string, string>) => {
     // 'weekly' merged into Productivity's Plan view (keep old links working)
-    if (p === 'weekly') { setPage('productivity'); setPageParams({ view: 'plan', ...(params ?? {}) }); window.scrollTo(0, 0); return; }
+    if (p === 'weekly') {
+      setPage('productivity'); setPageParams({ view: 'plan', ...(params ?? {}) });
+      try { sessionStorage.setItem('lifeos.page', 'productivity'); sessionStorage.setItem('lifeos.pageParams', JSON.stringify({ view: 'plan', ...(params ?? {}) })); } catch { /* ignore */ }
+      window.scrollTo(0, 0); return;
+    }
     setPage(p);
     setPageParams(params ?? {});
+    try { sessionStorage.setItem('lifeos.page', p); sessionStorage.setItem('lifeos.pageParams', JSON.stringify(params ?? {})); } catch { /* ignore */ }
     window.scrollTo(0, 0);
   }, []);
 

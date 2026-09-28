@@ -1,6 +1,7 @@
 // LifeOS — reports the app's scroll position to the Android shell so
 // pull-to-refresh only triggers when every scroll container is at the top.
-// No-op everywhere else. (Alarm logic untouched — this is its own bridge.)
+// No-op everywhere else. Uses a document-level capture listener so it
+// keeps working no matter how many times React re-creates <main>.
 let installed = false;
 
 export function initScrollReporting(): void {
@@ -10,20 +11,24 @@ export function initScrollReporting(): void {
   installed = true;
 
   const report = () => {
-    const main = document.querySelector('main');
-    const mainTop = main ? main.scrollTop === 0 : true;
-    const winTop = window.scrollY === 0;
-    native.reportScrollTop(mainTop && winTop);
+    // Any real scroll container away from the top (or the window itself)
+    // disables pull-to-refresh. Capture phase catches scroll events from
+    // every element, including ones created after this ran.
+    let atTop = window.scrollY === 0;
+    if (atTop) {
+      for (const el of document.querySelectorAll('main, [data-scroll-root]')) {
+        if (el.scrollTop > 0) { atTop = false; break; }
+      }
+    }
+    native.reportScrollTop(atTop);
   };
 
-  window.addEventListener('scroll', report, { passive: true });
-  const attach = () => {
-    const main = document.querySelector('main');
-    if (main) main.addEventListener('scroll', report, { passive: true });
-  };
-  attach();
-  // Pages mount/unmount <main> stays, but re-attach on route changes just in case.
-  const obs = new MutationObserver(() => attach());
-  obs.observe(document.body, { childList: true, subtree: true });
-  report();
+  // Capture is essential: scroll events don't bubble, but they DO fire the
+  // document capture phase for every scrolling element.
+  document.addEventListener('scroll', report, { capture: true, passive: true });
+  window.addEventListener('resize', report, { passive: true });
+  document.addEventListener('visibilitychange', report, { passive: true });
+  // Initial state, after layout settles.
+  requestAnimationFrame(report);
+  window.addEventListener('load', report, { passive: true });
 }

@@ -97,11 +97,10 @@ function AccountSection({ profile, toast }: any) {
 
 function AppearanceSection({ theme, setTheme, premiumTheme, setPremiumTheme }: any) {
   const THEMES: { key: string; name: string; desc: string; bg: string; fg: string; accent: string; dark: boolean }[] = [
-    { key: 'zen', name: 'Zen Paper', desc: 'Calm light · terracotta', bg: '#F8F9FA', fg: '#1E2022', accent: '#D37055', dark: false },
-    { key: 'focus', name: 'Deep Focus', desc: 'Sleek dark · indigo', bg: '#0F1115', fg: '#E1E2E6', accent: '#6366F1', dark: true },
-    { key: 'editorial', name: 'Editorial Minimal', desc: 'Warm cream · olive bronze', bg: '#FBF9F5', fg: '#2C221E', accent: '#857555', dark: false },
+    { key: 'zen', name: 'Zen Paper', desc: 'Calm ivory · terracotta', bg: '#F8F9FA', fg: '#1E2022', accent: '#D37055', dark: false },
+    { key: 'focus', name: 'Deep Focus', desc: 'Deep slate · indigo', bg: '#0F1115', fg: '#E6EAF0', accent: '#6366F1', dark: true },
     { key: 'nordic', name: 'Soft Nordic', desc: 'Ice gray · sage green', bg: '#F3F5F7', fg: '#111827', accent: '#10B981', dark: false },
-    { key: 'noir', name: 'Obsidian & Champagne', desc: 'Velvet black · gold', bg: '#101013', fg: '#E1E2E6', accent: '#C9A96A', dark: true },
+    { key: 'noir', name: 'Obsidian & Champagne', desc: 'Velvet black · gold', bg: '#101013', fg: '#E9E9EC', accent: '#C9A96A', dark: true },
   ];
 
   return (

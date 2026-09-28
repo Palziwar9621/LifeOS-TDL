@@ -96,32 +96,6 @@
     --color-brand-900: #cfcffb;
   }
 
-  /* 3) Editorial Minimal — warm alabaster + espresso + olive bronze */
-  html.theme-editorial {
-    --color-slate-50: #fcfaf6;
-    --color-slate-100: #f7f3ea;
-    --color-slate-200: #ede7d9;
-    --color-slate-300: #dbd2bf;
-    --color-slate-400: #a4977f;
-    --color-slate-500: #77694f;
-    --color-slate-600: #5d513c;
-    --color-slate-700: #4a4030;
-    --color-slate-800: #393125;
-    --color-slate-900: #2c221e;
-    --color-slate-950: #211a16;
-    --color-brand-50: #f2efe7;
-    --color-brand-100: #e5dfcf;
-    --color-brand-200: #cabfa4;
-    --color-brand-300: #ada077;
-    --color-brand-400: #96876a;
-    --color-brand-500: #857555;
-    --color-brand-600: #756546;
-    --color-brand-700: #625437;
-    --color-brand-800: #4f4329;
-    --color-brand-900: #3c321e;
-  }
-
-  /* 4) Soft Nordic — airy ice gray + midnight blue + sage */
   html.theme-nordic {
     --color-slate-50: #f6f8f9;
     --color-slate-100: #f0f3f5;
