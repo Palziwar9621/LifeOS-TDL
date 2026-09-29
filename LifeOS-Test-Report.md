@@ -185,3 +185,13 @@ All 🔴 and 🟠 items are fixed and verified end-to-end on the live site with 
 **Verification:** build + tsc clean; live browser: mic toggle cycles correctly (idle → session/indigo → idle on stop); caption shows the persistent "Listening — say a command…" prompt; turn-off and command paths exercised. Real-mic E2E still requires the device (sandbox Chromium has no speech backend).
 
 **No APK rebuild needed** (web-side only).
+
+## Favicon + bolt logo everywhere — 2026-09-29
+
+- User favicon tags confirmed in index.html (all 6 links/meta, site.webmanifest first).
+- Favicon pack verified byte-identical to user Downloads pack; favicon.svg kept as the enlarged big-bolt version.
+- PWA icons replaced with user bolt PNGs (web-app-manifest 192/512 -> icons/icon-192.png / icon-512.png).
+- public/icon.svg rewritten as bolt art (black tile + white bolt, fills canvas).
+- Logo component: solid black tile (was indigo gradient) matching favicon; used in Auth (2x) and Shell (sidebar + header).
+- Commit 3ef6b4b pushed; live assets verified 200 with new bytes.
+- Note: Android APK launcher icon still shows old art until an APK rebuild (v21).
