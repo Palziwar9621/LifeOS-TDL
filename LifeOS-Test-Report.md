@@ -162,3 +162,8 @@ All 🔴 and 🟠 items are fixed and verified end-to-end on the live site with 
 - **Fix:** route all recognizer callbacks through refs (`transcriptRef` / stable error handler) so the latest handler always runs, regardless of which render started the recognizer.
 - **Evidence:** local build with fix verified in browser: mic toggle → "Listening…" caption (armed/indigo) → awake (green); AI brain reachable and returning correct tool calls (`summarize_day` for "what is on my day"). True microphone E2E isn't possible in the sandbox (Chromium speech backend errors there), but the failure path — stale handler evaluated on final result — is eliminated by construction. On-device voice commands should now execute; partials were never affected.
 - **No APK rebuild required** (web-side only; Android shell loads the live site).
+
+### Follow-up (2026-09-29, commit `9e009bf`)
+- Voice UX polish: the caption now **echoes the heard command** the moment it starts executing, so the user always sees what the assistant heard even before the reply lands.
+- The "no wake word in continuous mode" path is now explicitly documented as intentionally silent (a comment in code) — it must not speak over the user; it is not a dropped command.
+- Duplicate "Buy groceries" test row from E2E cleanup deleted via REST (kept one; verified 204 + single row remains).
