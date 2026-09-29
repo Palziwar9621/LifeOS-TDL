@@ -150,3 +150,15 @@ All 🔴 and 🟠 items are fixed and verified end-to-end on the live site with 
 - 🟡 #8 Download page copy simplification — cosmetic, deferred (current copy verified accurate).
 - 🟡 #9 No automated tests — recommend a schema-drift test (assert every column the client writes exists in the introspected DB schema); this would have caught bug #1 automatically.
 - Optional hardening: disable "Confirm email" or add custom SMTP in Supabase Auth (user dashboard action, not code).
+
+---
+
+## 🐛 POST-CLEAN BUG — Voice assistant heard commands but produced no output (2026-09-29, later)
+
+**Severity:** 🔴 critical (assistant's core function) · **Status:** ✅ FIXED (commit `8d7a01d`, pushed)
+
+- **Symptom:** Speech input was captured and shown live on screen (partials worked), but the final command produced no reply, no toast, no action — the assistant silently swallowed it.
+- **Root cause:** Stale-closure race in `VoiceAssistant.tsx`. `startListening(onTranscript, …)` gives the recognizer the handler from the current render. Tapping the mic (`oneShot`) sets `armed=true` *after* that — the component re-renders and creates a new `onTranscript`, but the recognizer (web Speech API AND the Android native bridge, which stores its `onHeard` callback once at install) keeps the old one where `armed=false`. On the final transcript the handler ran wake-word extraction on the raw command, found no "hey lifeos", and dropped it (`cmd === null → return`).
+- **Fix:** route all recognizer callbacks through refs (`transcriptRef` / stable error handler) so the latest handler always runs, regardless of which render started the recognizer.
+- **Evidence:** local build with fix verified in browser: mic toggle → "Listening…" caption (armed/indigo) → awake (green); AI brain reachable and returning correct tool calls (`summarize_day` for "what is on my day"). True microphone E2E isn't possible in the sandbox (Chromium speech backend errors there), but the failure path — stale handler evaluated on final result — is eliminated by construction. On-device voice commands should now execute; partials were never affected.
+- **No APK rebuild required** (web-side only; Android shell loads the live site).
