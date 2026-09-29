@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Life OS logo" width="512" height="512">
-  <rect width="512" height="512" fill="#111214"/>
+  <rect width="512" height="512" rx="112" fill="#111214"/>
   <g transform="translate(256 256) scale(1.3) translate(-256 -256)">
     <path d="M316 76 164 276h81.6L216 436l152-200h-81.6z" fill="#fff"/>
   </g>
