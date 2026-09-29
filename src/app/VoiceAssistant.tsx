@@ -71,6 +71,20 @@ export function VoiceAssistant() {
     }
   }, [armed, busy, settings, runCommand, speak]);
 
+  // Cleanup on unmount
+  useEffect(() => () => { stopListening(); }, []);
+
+  // Always-current transcript handler. The recognizer (web or native) keeps
+  // whatever callback it was started with, but `onTranscript` is recreated on
+  // every render (it reads `armed`/`busy`/`settings`). Without this ref the
+  // final result was evaluated against a stale closure where armed=false, so
+  // the command was silently swallowed: input visible, no output. Route every
+  // callback through the ref so it always runs the latest handler.
+  const transcriptRef = useRef(onTranscript);
+  useEffect(() => { transcriptRef.current = onTranscript; }, [onTranscript]);
+  const stableTranscript = useCallback((t: string, isFinal: boolean) => transcriptRef.current(t, isFinal), []);
+  const stableError = useCallback((err: string) => { speak(err); setListening(false); }, [speak]);
+
   const toggleContinuous = useCallback(() => {
     if (!supported) return;
     if (isListening()) {
@@ -78,24 +92,21 @@ export function VoiceAssistant() {
       setListening(false);
       setArmed(false);
     } else {
-      const ok = startListening(onTranscript, (err) => {
-        speak(err);
-        setListening(false);
-      });
+      const ok = startListening(stableTranscript, stableError);
       setListening(ok);
       if (ok) speak('Voice assistant on');
     }
-  }, [supported, onTranscript, speak]);
+  }, [supported, stableTranscript, stableError, speak]);
 
   const oneShot = useCallback(() => {
     if (!supported || busy) return;
     setArmed(true);
     speak('Listening…');
-    startListening(onTranscript, (err) => { speak(err); });
+    startListening(stableTranscript, stableError);
     setListening(true);
     if (armedTimer.current) window.clearTimeout(armedTimer.current);
     armedTimer.current = window.setTimeout(() => setArmed(false), 12_000);
-  }, [supported, busy, onTranscript, speak]);
+  }, [supported, busy, stableTranscript, stableError, speak]);
 
   // Mic button = simple toggle: tap to talk, tap again to stop.
   const micTap = useCallback(() => {
@@ -107,10 +118,7 @@ export function VoiceAssistant() {
     } else {
       oneShot();   // single start path — double-start caused busy errors
     }
-  }, []);
-
-  // Cleanup on unmount
-  useEffect(() => () => { stopListening(); }, []);
+  }, [oneShot]);
 
   // Persist settings changes
   const updateSettings = (patch: Partial<AssistantSettings>) => {
