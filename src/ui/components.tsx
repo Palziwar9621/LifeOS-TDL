@@ -302,10 +302,11 @@ export function Spinner({ className = 'h-5 w-5' }: { className?: string }) {
 export function Logo({ size = 28 }: { size?: number }) {
   return (
     <span className="inline-flex items-center gap-2 select-none">
-      <span className="flex items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-violet-600 text-white shadow-sm shadow-brand-600/30"
-        style={{ width: size, height: size, fontSize: size * 0.55 }}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={{ width: size * 0.62, height: size * 0.62 }} aria-hidden="true">
-          <path d="M4 12.5 9.5 18 20 6.5" />
+      <span className="flex items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-violet-600 shadow-sm shadow-brand-600/30"
+        style={{ width: size, height: size }}>
+        {/* Lightning bolt — matches the LIFE OS favicon art */}
+        <svg viewBox="0 0 64 64" fill="none" style={{ width: size * 0.72, height: size * 0.72 }} aria-hidden="true">
+          <path d="M39.5 9.5 20.5 34.5h10.2L27 54.5l19-25H35.8z" fill="#fff" />
         </svg>
       </span>
       <span className="text-lg font-extrabold tracking-tight text-slate-900 dark:text-white">LifeOS</span>
