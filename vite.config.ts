@@ -9,7 +9,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icon.svg', 'icons/icon-192.png', 'icons/icon-512.png'],
+      includeAssets: ['icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'favicon.ico', 'favicon.svg', 'favicon-96x96.png', 'apple-touch-icon.png', 'site.webmanifest', 'web-app-manifest-192x192.png', 'web-app-manifest-512x512.png'],
       manifest: {
         name: 'LifeOS — Personal Productivity',
         short_name: 'LifeOS',
