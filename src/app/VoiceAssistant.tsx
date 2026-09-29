@@ -34,9 +34,13 @@ export function VoiceAssistant() {
   const runCommand = useCallback(async (text: string) => {
     if (!text.trim() || busy) return;
     setBusy(true);
+    setCaption(text);            // echo the command so the user sees what was heard
     try {
       const res = await executeCommand(text, { page, pageParams, navigate });
       speak(res.message);
+      // res.ok === false means the command parsed but mapped to no action —
+      // executeCommand already returns a help hint as the message; make sure
+      // the user *hears* it too (silence here once looked like a dead mic).
       if (res.ok) toast(res.message, 'success');
     } catch (e: any) {
       speak(e?.message ?? 'Something went wrong — check your connection');
@@ -60,7 +64,11 @@ export function VoiceAssistant() {
       return;
     }
     const cmd = extractWakeCommand(text, settings);
-    if (cmd === null) return;
+    if (cmd === null) {
+      // Continuous mode without wake word: not a command — say nothing, keep
+      // listening quietly (speaking here would talk over the user).
+      return;
+    }
     if (cmd) {
       void runCommand(cmd);            // "hey lifeos add task…"
     } else {
