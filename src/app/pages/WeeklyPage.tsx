@@ -5,6 +5,7 @@ import { Icon, Modal, EmptyState } from '../../ui/components';
 import { dbState, createScheduleBlock, updateScheduleBlock, deleteScheduleBlock } from '../../lib/db';
 import { fmtTime, todayStr } from '../../lib/dates';
 import { useConfirm } from '../../ui/components';
+import { useApp } from '../store';
 import type { ScheduleBlock } from '../../lib/types';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -66,7 +67,7 @@ function parseDateStr(s: string): Date {
 
 export function BlockEditor({ block, defaultDow, onClose }: { block: ScheduleBlock | null; defaultDow?: number; onClose: () => void }) {
   const s = dbState();
-  const { toast } = { toast: (m: string, k?: any) => console.log(m) };
+  const { toast } = useApp();
   const [title, setTitle] = useState(block?.title ?? '');
   const [weekdays, setWeekdays] = useState<number[]>([block?.weekday ?? defaultDow ?? 1]);
   const [start, setStart] = useState((block?.start_time ?? '09:00:00').slice(0, 5));

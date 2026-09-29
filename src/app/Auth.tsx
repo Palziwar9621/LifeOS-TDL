@@ -89,7 +89,7 @@ export function AuthScreen() {
         const r = await signUp(email, password, username);
         if (!r.ok) throw new Error(r.error ?? 'Sign up failed');
         if (r.needsEmailConfirm) {
-          setInfo('Account created! Check your email to confirm, then sign in.');
+          setInfo('Account created! We sent a confirmation link to your email — open it, then sign in here. Didn\'t get it? Use "Forgot password" to re-send.');
           setMode('login');
           return;
         }

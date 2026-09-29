@@ -21,7 +21,8 @@ export interface Toast { id: number; msg: string; kind: ToastKind; }
 export type PremiumTheme = 'zen' | 'focus' | 'nordic' | 'noir';
 
 export function applyPremiumTheme(root: HTMLElement, t: PremiumTheme | null): void {
-  for (const c of ['theme-zen', 'theme-focus', 'theme-editorial', 'theme-nordic', 'theme-noir']) root.classList.remove(c);
+  // 'theme-editorial' is legacy — kept so users upgrading from old versions shed the stale class.
+  for (const c of ['theme-zen', 'theme-focus', 'theme-nordic', 'theme-noir', 'theme-editorial']) root.classList.remove(c);
   if (t) root.classList.add(`theme-${t}`);
 }
 

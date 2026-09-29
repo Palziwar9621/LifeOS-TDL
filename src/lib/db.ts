@@ -86,8 +86,20 @@ export function getOnline() { return online; }
 export function currentUserId() { return uid; }
 
 let lastSyncError: string | null = null;
+let lastSyncErrorToastAt = 0;
 /** Last flush error message (for the sync badge tooltip / settings). */
 export function getLastSyncError(): string | null { return lastSyncError; }
+
+/** Toast a sync failure to the user — throttled so retries don't spam. */
+function reportSyncError(msg: string): void {
+  lastSyncError = msg || 'Unknown sync error';
+  const now = Date.now();
+  if (now - lastSyncErrorToastAt > 60_000) {
+    lastSyncErrorToastAt = now;
+    toast('Sync problem — your changes are queued locally and will retry.', 'error');
+  }
+  emit();
+}
 
 // ------------------------------------------------------------------
 // Boot / teardown
@@ -335,7 +347,7 @@ export async function flush(): Promise<void> {
         done.add(op.id);
       } catch (e: any) {
         const msg = String(e?.message ?? e ?? '');
-        lastSyncError = msg || 'Unknown sync error';
+        reportSyncError(msg);
         if (/fetch|network|Failed to fetch/i.test(msg)) break; // offline mid-flush
         if (/duplicate key|violates|unique/i.test(msg) && op.kind === 'insert') {
           done.add(op.id); // already exists server-side; treat as done

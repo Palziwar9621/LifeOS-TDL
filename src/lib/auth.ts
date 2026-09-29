@@ -50,7 +50,14 @@ export async function signUp(email: string, password: string, username: string):
     });
     if (error) return { ok: false, error: friendlyAuthError(error.message) };
     // If email confirmation is ON, session is null until user confirms.
-    if (!data.session) return { ok: true, needsEmailConfirm: true };
+    if (!data.session) {
+      // Best-effort: ask Supabase to resend the confirmation email immediately —
+      // the initial signup mail can be delayed/dropped by rate limits.
+      try {
+        await sb.auth.resend({ type: 'signup', email: email.trim() });
+      } catch { /* non-fatal — user can still use the reset flow */ }
+      return { ok: true, needsEmailConfirm: true };
+    }
     return { ok: true };
   } catch (e: any) {
     return { ok: false, error: friendlyAuthError(String(e?.message ?? e)) };

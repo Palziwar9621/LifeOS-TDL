@@ -178,6 +178,7 @@ create table public.tasks (
   occurrence_overrides jsonb not null default '{}'::jsonb,
   reminder_minutes integer,         -- minutes before due
   remind_me boolean default true,   -- per-task alarm on/off (voice: "remind me" / "don't remind")
+  tag_ids text[] not null default '{}', -- denormalized tag ids (mirrors task_tags links)
   estimated_minutes integer,
   actual_minutes integer,
   sort_order integer not null default 0,
