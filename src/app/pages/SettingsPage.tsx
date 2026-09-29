@@ -194,7 +194,7 @@ function AssistantSection({ toast }: any) {
 
           <label className="label">Wake word</label>
           <input className="input mb-1" value={s.wakeWord} onChange={(e) => patch({ wakeWord: e.target.value.toLowerCase() })} placeholder="hey lifeos" />
-          <p className="text-xs muted mb-4">Say this phrase followed by your command — e.g. “{s.wakeWord} add task submit assignment tomorrow at 5”. Or tap the mic button and just speak.</p>
+          <p className="text-xs muted mb-4">Starts a voice chat — say it (or just “hello”) and then keep giving commands without repeating it. The chat stays on until you say “turn off assistant” or tap the mic. The assistant also starts listening automatically whenever the app opens.</p>
 
           {nativeAssistant && (
             <div className="rounded-2xl ring-1 ring-slate-900/10 dark:ring-white/10 p-4 mb-4">

@@ -1,7 +1,17 @@
-// LifeOS — Voice assistant UI: floating mic button + live listening overlay.
-// Wake word ("Hey LifeOS") arms the assistant while the app is open; a tap
-// on the mic starts a one-shot command. Responses are spoken back via
-// speech synthesis and shown as a caption.
+// LifeOS — Voice assistant UI: floating mic button + live conversation overlay.
+//
+// Interaction model (conversation mode):
+//  • When the assistant is enabled in Settings, listening starts automatically
+//    when the app opens — no mic tap needed.
+//  • Saying the wake word ("hello lifeos" / configured phrase) opens a
+//    conversation session. Every final transcript after that is treated as a
+//    command — no wake word needed again.
+//  • The session stays open until the user says an off phrase
+//    ("turn off the assistant" / "stop listening" / "goodbye") or taps the
+//    mic to stop it manually. There is no idle timeout that drops you back
+//    to wake-word mode.
+//  • Every command gets a spoken reply + visible caption; the heard command
+//    is echoed in the caption so it's obvious what the assistant caught.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from '../ui/components';
 import { useApp } from './store';
@@ -11,15 +21,26 @@ import {
   type AssistantSettings,
 } from '../lib/voice';
 
+// Phrases that end the conversation session (checked case-insensitively).
+const OFF_PHRASES = [
+  'turn off the assistant', 'turn off assistant', 'stop listening',
+  'stop the assistant', 'goodbye', 'bye lifeos', 'stop assistant',
+];
+
+function matchesOffPhrase(t: string): boolean {
+  const x = t.toLowerCase().replace(/[.,!?]+$/, '').trim();
+  return OFF_PHRASES.some((p) => x === p || (x.length > p.length && x.includes(p) && x.length < p.length + 16));
+}
+
 export function VoiceAssistant() {
   const { page, pageParams, navigate, toast } = useApp();
   const supported = speechSupported();
   const [settings, setSettings] = useState<AssistantSettings>(() => getAssistantSettings());
   const [listening, setListening] = useState(false);
-  const [armed, setArmed] = useState(false);        // wake word heard, waiting for command
+  const [conv, setConv] = useState(false);          // conversation session active
   const [caption, setCaption] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const armedTimer = useRef<number | null>(null);
+  const startedRef = useRef(false);                 // auto-start guard (StrictMode double-effect)
 
   const speak = useCallback((msg: string) => {
     setCaption(msg);
@@ -34,58 +55,58 @@ export function VoiceAssistant() {
   const runCommand = useCallback(async (text: string) => {
     if (!text.trim() || busy) return;
     setBusy(true);
-    setCaption(text);            // echo the command so the user sees what was heard
+    setCaption(text);            // echo what was heard
     try {
+      // Turn-off phrases end the session instead of hitting the brain.
+      if (matchesOffPhrase(text)) {
+        setConv(false);
+        speak('Assistant off. Tap the mic to talk again.');
+        stopListening();
+        setListening(false);
+        return;
+      }
       const res = await executeCommand(text, { page, pageParams, navigate });
       speak(res.message);
-      // res.ok === false means the command parsed but mapped to no action —
-      // executeCommand already returns a help hint as the message; make sure
-      // the user *hears* it too (silence here once looked like a dead mic).
       if (res.ok) toast(res.message, 'success');
     } catch (e: any) {
       speak(e?.message ?? 'Something went wrong — check your connection');
     } finally {
       setBusy(false);
-      setArmed(false);
     }
   }, [busy, page, pageParams, navigate, speak, toast]);
 
   const onTranscript = useCallback((text: string, isFinal: boolean) => {
-    // Show partial transcripts live so it's obvious the mic is hearing you.
+    // Partials show live so it's obvious the mic is hearing you.
     if (!isFinal) {
       if (text && text.length > 2) setCaption(text);
       return;
     }
     if (busy) return;
-    if (armed) {
-      // Command mode: everything spoken is a command.
-      setArmed(false);
+    // In a conversation session, everything spoken is a command — wake word
+    // not required again. (The stale-closure bug that swallowed finals was
+    // fixed by routing callbacks through refs; onTranscript only runs fresh.)
+    if (conv) {
       void runCommand(text);
       return;
     }
     const cmd = extractWakeCommand(text, settings);
-    if (cmd === null) {
-      // Continuous mode without wake word: not a command — say nothing, keep
-      // listening quietly (speaking here would talk over the user).
-      return;
-    }
+    if (cmd === null) return;                     // no wake word → ignore quietly
     if (cmd) {
-      void runCommand(cmd);            // "hey lifeos add task…"
+      setConv(true);                              // "hello … add task" → chat mode on
+      void runCommand(cmd);
     } else {
-      setArmed(true);                  // "hey lifeos" alone
-      speak('Listening…');
-      if (armedTimer.current) window.clearTimeout(armedTimer.current);
-      armedTimer.current = window.setTimeout(() => setArmed(false), 10_000);
+      setConv(true);                              // wake word alone → greet
+      speak('I\'m listening. What can I do for you?');
     }
-  }, [armed, busy, settings, runCommand, speak]);
+  }, [conv, busy, settings, runCommand, speak]);
 
   // Cleanup on unmount
   useEffect(() => () => { stopListening(); }, []);
 
   // Always-current transcript handler. The recognizer (web or native) keeps
   // whatever callback it was started with, but `onTranscript` is recreated on
-  // every render (it reads `armed`/`busy`/`settings`). Without this ref the
-  // final result was evaluated against a stale closure where armed=false, so
+  // every render (it reads `conv`/`busy`/`settings`). Without this ref the
+  // final result was evaluated against a stale closure where conv=false, so
   // the command was silently swallowed: input visible, no output. Route every
   // callback through the ref so it always runs the latest handler.
   const transcriptRef = useRef(onTranscript);
@@ -93,52 +114,42 @@ export function VoiceAssistant() {
   const stableTranscript = useCallback((t: string, isFinal: boolean) => transcriptRef.current(t, isFinal), []);
   const stableError = useCallback((err: string) => { speak(err); setListening(false); }, [speak]);
 
-  const toggleContinuous = useCallback(() => {
-    if (!supported) return;
-    if (isListening()) {
-      stopListening();
-      setListening(false);
-      setArmed(false);
-    } else {
-      const ok = startListening(stableTranscript, stableError);
-      setListening(ok);
-      if (ok) speak('Voice assistant on');
-    }
-  }, [supported, stableTranscript, stableError, speak]);
+  // Start listening once when the app opens and the assistant is enabled.
+  // (Auto-start = the wake word works without tapping the mic first.)
+  useEffect(() => {
+    if (!supported || !settings.enabled || startedRef.current) return;
+    startedRef.current = true;
+    const ok = startListening(stableTranscript, stableError);
+    setListening(ok);
+  }, [supported, settings.enabled, stableTranscript, stableError]);
 
-  const oneShot = useCallback(() => {
-    if (!supported || busy) return;
-    setArmed(true);
-    speak('Listening…');
-    startListening(stableTranscript, stableError);
-    setListening(true);
-    if (armedTimer.current) window.clearTimeout(armedTimer.current);
-    armedTimer.current = window.setTimeout(() => setArmed(false), 12_000);
-  }, [supported, busy, stableTranscript, stableError, speak]);
-
-  // Mic button = simple toggle: tap to talk, tap again to stop.
+  // Mic button = simple toggle: tap to start a session, tap again to stop.
   const micTap = useCallback(() => {
     if (isListening()) {
       stopListening();
       setListening(false);
-      setArmed(false);
+      setConv(false);
       setCaption(null);
     } else {
-      oneShot();   // single start path — double-start caused busy errors
+      setConv(true);
+      speak('I\'m listening. What can I do for you?');
+      const ok = startListening(stableTranscript, stableError);
+      setListening(ok);
     }
-  }, [oneShot]);
+  }, [stableTranscript, stableError, speak]);
 
-  // Persist settings changes
+  // Persist settings changes; stop listening when disabled.
   const updateSettings = (patch: Partial<AssistantSettings>) => {
     const next = { ...settings, ...patch };
     setSettings(next);
     saveAssistantSettings(next);
-    if (!next.enabled && isListening()) { stopListening(); setListening(false); }
+    if (!next.enabled && isListening()) { stopListening(); setListening(false); setConv(false); }
   };
+  void updateSettings; // settings live in SettingsPage; kept for future use
 
   if (!supported || !settings.enabled) return null;
 
-  const state = busy ? 'working' : armed ? 'armed' : listening ? 'awake' : 'idle';
+  const state = busy ? 'working' : conv ? 'conv' : listening ? 'awake' : 'idle';
 
   return (
     <>
@@ -146,21 +157,22 @@ export function VoiceAssistant() {
       <button
         aria-label="Voice assistant"
         onClick={micTap}
-        style={state === 'armed' || state === 'working'
+        style={state === 'conv' || state === 'working'
           ? { background: '#4f46e5', color: '#fff' }
           : state === 'awake'
             ? { background: '#10b981', color: '#fff' }
             : { background: '#0f172a', color: '#e2e8f0' }}
         className={`fixed z-40 bottom-20 right-4 h-12 w-12 rounded-full shadow-lg flex items-center justify-center transition md:bottom-6
-          ${state === 'armed' ? 'animate-pulse' : ''} ring-1 ring-white/20`}
+          ${state === 'working' ? 'animate-pulse' : ''} ring-1 ring-white/20`}
+        title={state === 'idle' ? 'Start voice chat' : 'Stop voice assistant'}
       >
         <Icon name="mic" className="h-5 w-5" />
       </button>
 
       {/* Caption */}
-      {(caption || armed) && (
+      {(caption || conv) && (
         <div className="fixed z-40 bottom-36 left-1/2 -translate-x-1/2 max-w-[92vw] rounded-2xl bg-slate-900/90 text-white text-sm px-4 py-2.5 shadow-xl animate-slide-up md:bottom-20">
-          {caption ?? 'Listening…'}
+          {caption ?? 'Listening — say a command, or "turn off assistant" to stop'}
         </div>
       )}
     </>

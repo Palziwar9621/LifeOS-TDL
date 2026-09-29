@@ -305,12 +305,24 @@ export async function executeCommand(
   }
 }
 
-// --- Wake-word helpers (kept from previous version) ---
+// --- Wake-word helpers ---
+// 'hello' is accepted as an alias of the configured wake word so natural
+// phrases like "hello" or "hello lifeos" both open a conversation session.
 export function extractWakeCommand(text: string, settings: AssistantSettings): string | null {
   const t = text.trim();
   if (!t) return null;
-  const w = settings.wakeWord.toLowerCase();
-  const i = t.toLowerCase().indexOf(w);
-  if (i === -1) return null;
-  return t.slice(i + w.length).replace(/^[\s,.]+/, '');
+  const lower = t.toLowerCase();
+  const w = settings.wakeWord.toLowerCase().trim();
+  const candidates = [w, ...(w && w !== 'hello' ? ['hello'] : [])].filter(Boolean)
+    // longest first so "hey lifeos" wins over "hello" inside it
+    .sort((a, b) => b.length - a.length);
+  for (const c of candidates) {
+    const i = lower.indexOf(c);
+    if (i === -1) continue;
+    // Match must start at a word boundary so "hello" inside another word doesn't fire.
+    const before = i === 0 ? ' ' : lower[i - 1];
+    if (before !== ' ') continue;
+    return t.slice(i + c.length).replace(/^[\s,.]+/, '');
+  }
+  return null;
 }
