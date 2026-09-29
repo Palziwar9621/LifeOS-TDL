@@ -302,9 +302,9 @@ export function Spinner({ className = 'h-5 w-5' }: { className?: string }) {
 export function Logo({ size = 28 }: { size?: number }) {
   return (
     <span className="inline-flex items-center gap-2 select-none">
-      <span className="flex items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-violet-600 shadow-sm shadow-brand-600/30"
+      <span className="flex items-center justify-center rounded-xl bg-[#111214]"
         style={{ width: size, height: size }}>
-        {/* Lightning bolt — matches the LIFE OS favicon art */}
+        {/* LIFE OS bolt logo — same art as the favicon, kept big on the tile */}
         <svg viewBox="0 0 64 64" fill="none" style={{ width: size * 0.72, height: size * 0.72 }} aria-hidden="true">
           <path d="M39.5 9.5 20.5 34.5h10.2L27 54.5l19-25H35.8z" fill="#fff" />
         </svg>
