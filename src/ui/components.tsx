@@ -152,13 +152,13 @@ export function ProgressBar({ value, color, label }: { value: number; color?: st
 // ---------------------------------------------------------------
 export function Tabs({ tabs, active, onChange }: { tabs: { key: string; label: string; badge?: number }[]; active: string; onChange: (k: string) => void }) {
   return (
-    <div className="no-scrollbar flex gap-1 overflow-x-auto rounded-xl bg-slate-200/60 dark:bg-slate-800/60 p-1">
+    <div className="no-scrollbar flex gap-1 overflow-x-auto rounded-lg bg-slate-200/60 dark:bg-slate-800/60 p-1">
       {tabs.map((t) => (
         <button
           key={t.key}
-          className={`whitespace-nowrap rounded-lg px-3.5 py-1.5 text-sm font-semibold transition ${
+          className={`whitespace-nowrap rounded-md px-3.5 py-1.5 text-sm font-semibold transition ${
             active === t.key
-              ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm'
+              ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-[rgba(0,0,0,0.08)_0_0_0_1px,rgba(0,0,0,0.04)_0_2px_2px] dark:shadow-[rgba(255,255,255,0.12)_0_0_0_1px]'
               : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
           }`}
           onClick={() => onChange(t.key)}
