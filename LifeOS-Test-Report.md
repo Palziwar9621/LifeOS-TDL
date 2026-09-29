@@ -167,3 +167,21 @@ All 🔴 and 🟠 items are fixed and verified end-to-end on the live site with 
 - Voice UX polish: the caption now **echoes the heard command** the moment it starts executing, so the user always sees what the assistant heard even before the reply lands.
 - The "no wake word in continuous mode" path is now explicitly documented as intentionally silent (a comment in code) — it must not speak over the user; it is not a dropped command.
 - Duplicate "Buy groceries" test row from E2E cleanup deleted via REST (kept one; verified 204 + single row remains).
+
+---
+
+## 🔁 FEATURE — Voice assistant conversation mode (2026-09-29, commit `5ac2195`)
+
+**User request:** auto-start on app open, keep executing commands without repeating the wake word, act like a voice chat bot with proper replies.
+
+**Shipped:**
+- ✅ Auto-start: when the assistant is enabled in Settings, listening begins automatically as soon as the app opens (StrictMode-safe guard).
+- ✅ Persistent conversation session: wake word ("hello" works as alias, plus the configured phrase) opens the session once; every final transcript afterwards is a command — no re-waking, no idle timeout.
+- ✅ Session ends only by voice ("turn off assistant", "stop listening", "stop the assistant", "goodbye") or manual mic tap.
+- ✅ Proper replies: every command gets a spoken reply (TTS) + caption; the heard command is echoed in the caption first; failed lookups return a helpful spoken hint, not silence.
+- ✅ Word-boundary wake matching (a "hello" inside another word can't false-trigger).
+- ✅ Settings copy updated to describe the conversation model.
+
+**Verification:** build + tsc clean; live browser: mic toggle cycles correctly (idle → session/indigo → idle on stop); caption shows the persistent "Listening — say a command…" prompt; turn-off and command paths exercised. Real-mic E2E still requires the device (sandbox Chromium has no speech backend).
+
+**No APK rebuild needed** (web-side only).
