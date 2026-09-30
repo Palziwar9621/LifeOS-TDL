@@ -40,10 +40,28 @@ public class AssistantService extends Service {
     private String wakeWord = "hey lifeos";
     private long lastWakeFiredAt = 0;
     private long pausedUntil = 0;
+    private boolean appForeground = false;
+    private final android.os.Handler handler = new android.os.Handler(getMainLooper());
+
+    private static AssistantService instance;
+
+    /** The wake-word listener is ONLY for when the app is closed. While the
+     *  app is open its recognizer must be destroyed — otherwise it holds the
+     *  mic and the in-app idea recorder fails with "LifeOS is recording". */
+    public static void setAppForeground(boolean fg) {
+        appForegroundStatic = fg;
+        if (instance == null) return;
+        instance.appForeground = fg;
+        if (fg) instance.pauseListening();
+        else instance.handler.postDelayed(instance::startListening, 400);
+    }
+    private static boolean appForegroundStatic = false;
 
     @Override
     public void onCreate() {
         super.onCreate();
+        instance = this;
+        appForeground = appForegroundStatic;
         NotificationChannel ch = new NotificationChannel(CHANNEL, "Voice assistant", NotificationManager.IMPORTANCE_LOW);
         ch.setDescription("Listens for your wake word");
         getSystemService(NotificationManager.class).createNotificationChannel(ch);
@@ -51,7 +69,7 @@ public class AssistantService extends Service {
 
         SharedPreferences p = getSharedPreferences(PREFS, MODE_PRIVATE);
         wakeWord = p.getString(KEY_WAKE_WORD, "hey lifeos");
-        startListening();
+        if (!appForeground) startListening();
     }
 
     private Notification buildNotification() {
@@ -68,6 +86,7 @@ public class AssistantService extends Service {
     }
 
     private void startListening() {
+        if (appForeground) return; // app is open — the mic belongs to the app
         if (!SpeechRecognizer.isRecognitionAvailable(this)) return;
         // Pause window after a wake event: don't re-trigger while the popup
         // is up (and give the user time to speak the command).
@@ -150,6 +169,16 @@ public class AssistantService extends Service {
         return true;
     }
 
+    /** Destroy the recognizer and cancel every pending restart — releases
+     *  the mic immediately (used when the app comes to the foreground). */
+    private void pauseListening() {
+        handler.removeCallbacksAndMessages(null);
+        if (recognizer != null) {
+            try { recognizer.destroy(); } catch (Exception ignored) {}
+            recognizer = null;
+        }
+    }
+
     private void restart() {
         if (recognizer != null) {
             try { recognizer.destroy(); } catch (Exception ignored) {}
@@ -157,7 +186,7 @@ public class AssistantService extends Service {
         }
         // Recreate fresh: ERROR_CLIENT(5)/busy(8) mean the old instance is
         // wedged — a short delay plus a new object clears it.
-        new android.os.Handler(getMainLooper()).postDelayed(this::startListening, 1200);
+        handler.postDelayed(this::startListening, 1200);
     }
 
     @Override
@@ -171,6 +200,8 @@ public class AssistantService extends Service {
 
     @Override
     public void onDestroy() {
+        if (instance == this) instance = null;
+        handler.removeCallbacksAndMessages(null);
         if (recognizer != null) { try { recognizer.destroy(); } catch (Exception ignored) {} }
         super.onDestroy();
     }

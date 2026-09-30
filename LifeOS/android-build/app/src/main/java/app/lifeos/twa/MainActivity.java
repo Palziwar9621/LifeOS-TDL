@@ -37,6 +37,50 @@ public class MainActivity extends Activity {
     private boolean askedNotif = false;
     private static MainActivity instance;
 
+    // Runtime permission stages, requested ONE per user interaction round so
+    // Android never collapses them silently. Order: notifications → mic →
+    // camera → exact alarms (settings screen). Persisted so the flow runs
+    // once per install, not on every launch.
+    private static final String PREFS = "lifeos.permissions";
+    private static final int REQ_NOTIF = 1001;
+    private static final int REQ_MIC = 2001;
+    private static final int REQ_CAMERA = 2003;
+
+    private android.content.SharedPreferences permPrefs() {
+        return getSharedPreferences(PREFS, MODE_PRIVATE);
+    }
+
+    /** Kick off the first-open permission flow (after the page is touchable). */
+    private void startPermissionFlow() {
+        if (permPrefs().getBoolean("done", false)) return;
+        android.content.SharedPreferences p = permPrefs();
+        if (Build.VERSION.SDK_INT >= 33 && !p.getBoolean("notifications", false)) {
+            p.edit().putBoolean("notifications", true).apply();
+            requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, REQ_NOTIF);
+            return; // continue in onRequestPermissionsResult
+        }
+        if (!p.getBoolean("mic", false)) {
+            p.edit().putBoolean("mic", true).apply();
+            requestPermissions(new String[]{"android.permission.RECORD_AUDIO"}, REQ_MIC);
+            return;
+        }
+        if (!p.getBoolean("camera", false)) {
+            p.edit().putBoolean("camera", true).apply();
+            requestPermissions(new String[]{"android.permission.CAMERA"}, REQ_CAMERA);
+            return;
+        }
+        if (!p.getBoolean("alarms", false) && Build.VERSION.SDK_INT >= 31) {
+            p.edit().putBoolean("alarms", true).apply();
+            // SCHEDULE_EXACT_ALARM is user-grantable via the settings screen —
+            // sending the user there is the standard, store-safe flow.
+            try {
+                startActivity(new Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                    android.net.Uri.parse("package:" + getPackageName())));
+            } catch (Exception ignored) {}
+        }
+        p.edit().putBoolean("done", true).apply();
+    }
+
     public static MainActivity get() { return instance; }
 
     /** Evaluate JS in the page (used by the speech bridge to deliver results). */
@@ -113,11 +157,12 @@ public class MainActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 hideSplash();
-                // Ask for the notification permission once, AFTER the page is
-                // loaded and touchable — never from onCreate (touch-freeze bug).
-                if (!askedNotif && Build.VERSION.SDK_INT >= 33) {
+                // First-open permission flow (notifications, mic, camera,
+                // exact alarms) — only after the page is loaded and touchable,
+                // never from onCreate (touch-freeze bug).
+                if (!askedNotif) {
                     askedNotif = true;
-                    requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1001);
+                    startPermissionFlow();
                 }
             }
 
@@ -135,7 +180,7 @@ public class MainActivity extends Activity {
         // Safety: never let the splash stick longer than 12s (slow network etc.).
         new Handler(Looper.getMainLooper()).postDelayed(this::hideSplash, 12_000);
 
-        web.loadUrl("https://life-os-tdl.vercel.app/");
+        web.loadUrl("https://life-os-tdl.vercel.app/app");
     }
 
     /**
@@ -157,6 +202,8 @@ public class MainActivity extends Activity {
     protected void onPause() {
         super.onPause();
         if (web != null) web.onPause();
+        // App going to background: hand the mic to the wake-word service.
+        try { AssistantService.setAppForeground(false); } catch (Exception ignored) {}
     }
 
     @Override
@@ -166,6 +213,17 @@ public class MainActivity extends Activity {
         // Belt-and-braces: if the splash somehow survived (paused mid-hide),
         // kill it on return so touch is never dead.
         if (splashGone && splash != null) splash.setVisibility(View.GONE);
+        // App is open: the wake-word service must release the mic so in-app
+        // features (voice notes on ideas, in-app recognizer) can record.
+        try { AssistantService.setAppForeground(true); } catch (Exception ignored) {}
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        // Whatever the user answered, continue the queue so every permission
+        // gets asked exactly once per install.
+        startPermissionFlow();
     }
 
     @Override

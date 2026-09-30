@@ -2,6 +2,9 @@
 // Media is captured via getUserMedia/MediaRecorder, compressed to fit inside
 // the idea row (photo ≲100 KB JPEG, voice ≲2 min Opus/WebM), so it syncs
 // through the existing outbox/realtime machinery without extra plumbing.
+//
+// Android allows only one mic client: before recording we hand the mic back
+// from the assistant's recognizer (see voice.ts pauseMicForRecording).
 
 export interface CapturedPhoto {
   dataUrl: string;   // data:image/jpeg;base64,...
@@ -270,16 +273,34 @@ export interface VoiceSession {
 const MAX_VOICE_SECS = 120; // keep the row small enough to sync briskly
 
 export async function startVoiceRecording(): Promise<VoiceSession> {
-  let stream: MediaStream;
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  } catch (e: any) {
-    if (e?.name === 'NotAllowedError') throw new Error('Microphone permission denied. Allow mic access in your browser/app settings.');
-    if (e?.name === 'NotFoundError') throw new Error('No microphone found on this device.');
-    throw new Error('Could not start recording. ' + (e?.message ?? ''));
+  // Release the assistant's recognizer first — Android rejects a second mic
+  // client with "LifeOS is already recording".
+  try { const v = await import('./voice'); v.pauseMicForRecording(); } catch { /* not installed */ }
+  let stream: MediaStream | null = null;
+  // Retry a few times: the just-stopped recognizer releases the mic with a
+  // small delay on some devices.
+  for (let attempt = 0; attempt < 4 && !stream; attempt++) {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e: any) {
+      if (e?.name === 'NotAllowedError') {
+        try { const v = await import('./voice'); v.resumeMicAfterRecording(); } catch { /* ignore */ }
+        throw new Error('Microphone permission denied. Allow mic access in your browser/app settings.');
+      }
+      if (e?.name === 'NotFoundError') {
+        try { const v = await import('./voice'); v.resumeMicAfterRecording(); } catch { /* ignore */ }
+        throw new Error('No microphone found on this device.');
+      }
+      if (attempt === 3) {
+        try { const v = await import('./voice'); v.resumeMicAfterRecording(); } catch { /* ignore */ }
+        throw new Error('Microphone busy — the voice assistant is still releasing it. Try again in a second.');
+      }
+      await new Promise((r) => setTimeout(r, 350));
+    }
   }
+  const micStream = stream!;
   const mimeType = pickVoiceMime();
-  const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+  const rec = new MediaRecorder(micStream, mimeType ? { mimeType } : undefined);
   const chunks: Blob[] = [];
   const startedAt = Date.now();
   let pausedMs = 0;          // accumulated time spent paused
@@ -320,7 +341,8 @@ export async function startVoiceRecording(): Promise<VoiceSession> {
       rec.stop();
       await stopped;
     }
-    stream.getTracks().forEach((t) => t.stop());
+    micStream.getTracks().forEach((t) => t.stop());
+    try { const v = await import('./voice'); v.resumeMicAfterRecording(); } catch { /* ignore */ }
     const type = rec.mimeType || mimeType || 'audio/webm';
     const blob = new Blob(chunks, { type });
     const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -334,7 +356,8 @@ export async function startVoiceRecording(): Promise<VoiceSession> {
 
   const cancel = () => {
     try { if (rec.state !== 'inactive') rec.stop(); } catch { /* ignore */ }
-    stream.getTracks().forEach((t) => t.stop());
+    micStream.getTracks().forEach((t) => t.stop());
+    import('./voice').then((v) => v.resumeMicAfterRecording()).catch(() => undefined);
   };
 
   // Hard cap: auto-stop at 2 minutes so nothing runs away silently.

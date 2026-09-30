@@ -227,6 +227,27 @@ export function stopListening(): void {
   try { recog?.stop(); } catch { /* ignore */ }
 }
 
+// --- Mic hand-off (idea voice notes etc.) ---
+// Android allows ONE mic client at a time: while the assistant's continuous
+// recognizer runs, MediaRecorder's getUserMedia fails with "LifeOS is
+// recording". These helpers release the recognizer for the duration of an
+// explicit recording and resume it afterwards.
+export function pauseMicForRecording(): void {
+  const n = nativeSpeech();
+  if (n && typeof n.stopContinuous === 'function') { try { n.stopContinuous(); } catch { /* ignore */ } }
+  try { recog?.stop(); } catch { /* ignore */ }
+}
+
+export function resumeMicAfterRecording(): void {
+  if (!wantListening) return; // assistant wasn't listening — nothing to restore
+  const n = nativeSpeech();
+  if (n && typeof n.startContinuous === 'function') {
+    try { n.startContinuous(); } catch { /* retry loop will recover */ }
+    return;
+  }
+  if (recog) { try { recog.start(); } catch { /* onend retry loop recovers */ } }
+}
+
 export function isListening(): boolean { return wantListening; }
 
 // --- Context for the brain ---
