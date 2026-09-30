@@ -1,6 +1,6 @@
 // LifeOS — task row component with drag handle, actions menu
 import React, { useState } from 'react';
-import { Icon, PriorityChip, useConfirm } from '../ui/components';
+import { Icon, PriorityChip, useConfirm, Modal } from '../ui/components';
 import { completeTask, uncompleteTask, updateTask, deleteTask, restoreTask, duplicateTask, dbState, linkTaskTag, createTag, completeOccurrence, uncompleteOccurrence } from '../lib/db';
 import { relativeDay, fmtTime, isOverdue, todayStr } from '../lib/dates';
 import { recurrenceSummary } from '../lib/recurrence';
@@ -126,37 +126,42 @@ function TaskMenu({ task, onDelete, onSnooze, onDuplicate, onPriority, onStatus,
   onPriority: (p: Priority) => void; onStatus: (s: any) => void; onEdit: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const close = () => setOpen(false);
   return (
     <div className="relative">
       <button className="btn-ghost btn-sm" aria-label="More actions" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
         <Icon name="more" className="h-4 w-4" />
-        {open && (
-          <div className="card absolute right-0 top-9 z-40 w-52 p-1.5 animate-fade-in" onClick={(e) => e.stopPropagation()}>
-            <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider muted">Priority</div>
-            {(['low', 'medium', 'high', 'urgent'] as Priority[]).map((p) => (
-              <button key={p} className="nav-item w-full !py-1.5 text-xs" onClick={() => { onPriority(p); setOpen(false); }}>
-                {p === 'urgent' ? '‼' : p === 'high' ? '↑' : p === 'medium' ? '=' : '↓'} {p}
-                {task.priority === p && <Icon name="check" className="h-3.5 w-3.5 ml-auto" />}
-              </button>
-            ))}
-            <div className="divider my-1" />
-            <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider muted">Status</div>
-            {(['inbox', 'planned', 'in_progress', 'completed', 'cancelled'] as const).map((st) => (
-              <button key={st} className="nav-item w-full !py-1.5 text-xs" onClick={() => { onStatus(st); setOpen(false); }}>
-                {STATUS_LABEL[st]}
-              </button>
-            ))}
-            <div className="divider my-1" />
-            <button className="nav-item w-full !py-1.5 text-xs" onClick={() => { onSnooze(1); setOpen(false); }}>Snooze +1 day</button>
-            <button className="nav-item w-full !py-1.5 text-xs" onClick={() => { onSnooze(3); setOpen(false); }}>Snooze +3 days</button>
-            <button className="nav-item w-full !py-1.5 text-xs" onClick={() => { onSnooze(7); setOpen(false); }}>Snooze +7 days</button>
-            <div className="divider my-1" />
-            <button className="nav-item w-full !py-1.5 text-xs" onClick={() => { onDuplicate(); setOpen(false); }}>Duplicate</button>
-            <button className="nav-item w-full !py-1.5 text-xs" onClick={() => { onEdit(); setOpen(false); }}>Edit</button>
-            <button className="nav-item w-full !py-1.5 text-xs text-rose-600 dark:text-rose-400" onClick={() => { setOpen(false); onDelete(); }}>Delete</button>
-          </div>
-        )}
       </button>
+      {/* Bottom-sheet menu instead of an absolute dropdown: a dropdown near
+          the screen edge could be covered by the fixed bottom nav (z-30), so
+          tapping "Delete" hit the nav instead — the task never got deleted.
+          A modal sheet sits above EVERYTHING (z-50) and cannot be overlapped. */}
+      <Modal open={open} onClose={close} title="Task actions">
+        <div className="space-y-0.5" onClick={(e) => e.stopPropagation()}>
+          <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider muted">Priority</div>
+          {(['low', 'medium', 'high', 'urgent'] as Priority[]).map((p) => (
+            <button key={p} className="nav-item w-full !py-2 text-sm" onClick={() => { onPriority(p); close(); }}>
+              {p === 'urgent' ? '‼' : p === 'high' ? '↑' : p === 'medium' ? '=' : '↓'} {p}
+              {task.priority === p && <Icon name="check" className="h-3.5 w-3.5 ml-auto" />}
+            </button>
+          ))}
+          <div className="divider my-1" />
+          <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider muted">Status</div>
+          {(['inbox', 'planned', 'in_progress', 'completed', 'cancelled'] as const).map((st) => (
+            <button key={st} className="nav-item w-full !py-2 text-sm" onClick={() => { onStatus(st); close(); }}>
+              {STATUS_LABEL[st]}
+            </button>
+          ))}
+          <div className="divider my-1" />
+          <button className="nav-item w-full !py-2 text-sm" onClick={() => { onSnooze(1); close(); }}>Snooze +1 day</button>
+          <button className="nav-item w-full !py-2 text-sm" onClick={() => { onSnooze(3); close(); }}>Snooze +3 days</button>
+          <button className="nav-item w-full !py-2 text-sm" onClick={() => { onSnooze(7); close(); }}>Snooze +7 days</button>
+          <div className="divider my-1" />
+          <button className="nav-item w-full !py-2 text-sm" onClick={() => { onDuplicate(); close(); }}>Duplicate</button>
+          <button className="nav-item w-full !py-2 text-sm" onClick={() => { close(); onEdit(); }}>Edit</button>
+          <button className="nav-item w-full !py-2 text-sm font-semibold text-rose-600 dark:text-rose-400" onClick={() => { close(); onDelete(); }}>Delete</button>
+        </div>
+      </Modal>
     </div>
   );
 }

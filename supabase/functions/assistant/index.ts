@@ -8,6 +8,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const MODEL = 'llama-3.3-70b-versatile';
 
+// Keep in sync with src/lib/brain.ts — the assistant has FULL app control:
+// tasks, notes, reminders, ideas, remember-items, projects, goals, nav.
 const TOOLS = [
   {
     type: 'function',
@@ -27,22 +29,6 @@ const TOOLS = [
         },
         required: ['title'],
       },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'add_note',
-      description: 'Create a note for information without a deadline.',
-      parameters: { type: 'object', properties: { title: { type: 'string' }, content: { type: 'string' } }, required: ['title'] },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'add_reminder',
-      description: 'Standalone timed reminder.',
-      parameters: { type: 'object', properties: { title: { type: 'string' }, due_at: { type: 'string', description: 'ISO datetime with tz offset' } }, required: ['title', 'due_at'] },
     },
   },
   {
@@ -106,6 +92,78 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'add_note',
+      description: 'Create a note for information without a deadline.',
+      parameters: { type: 'object', properties: { title: { type: 'string' }, content: { type: 'string' } }, required: ['title'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_note',
+      description: 'Delete a note by title match.',
+      parameters: { type: 'object', properties: { title_match: { type: 'string' } }, required: ['title_match'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'add_reminder',
+      description: 'Standalone timed reminder.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+          due_at: { type: 'string', description: 'ISO datetime with tz offset' },
+          recurrence: { type: 'string', enum: ['daily', 'weekdays', 'weekly', 'monthly', 'yearly'] },
+        },
+        required: ['title', 'due_at'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_reminder',
+      description: 'Delete a standalone reminder by title match.',
+      parameters: { type: 'object', properties: { title_match: { type: 'string' } }, required: ['title_match'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'add_idea',
+      description: 'Save an idea / someday-maybe thought into Library → Ideas.',
+      parameters: { type: 'object', properties: { title: { type: 'string' }, description: { type: 'string' } }, required: ['title'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_idea',
+      description: 'Delete an idea by title match.',
+      parameters: { type: 'object', properties: { title_match: { type: 'string' } }, required: ['title_match'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'idea_to_project',
+      description: 'Convert an existing idea into an active project.',
+      parameters: { type: 'object', properties: { title_match: { type: 'string' } }, required: ['title_match'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'open_capture',
+      description: 'Open the idea-capture modal (camera photo + voice/text note). Use for "capture an idea", "new idea with camera/photo".',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'create_project',
       description: 'Create a project to group tasks under.',
       parameters: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
@@ -114,9 +172,56 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'delete_project',
+      description: 'Delete a project by name match. Tasks are kept but unlinked.',
+      parameters: { type: 'object', properties: { name_match: { type: 'string' } }, required: ['name_match'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_goal',
+      description: 'Create a goal.',
+      parameters: { type: 'object', properties: { title: { type: 'string' } }, required: ['title'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_goal',
+      description: 'Delete a goal by title match.',
+      parameters: { type: 'object', properties: { title_match: { type: 'string' } }, required: ['title_match'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'add_remember',
+      description: 'Save a thing to remember (birthday, pin, fact) into Library → Remember.',
+      parameters: { type: 'object', properties: { title: { type: 'string' }, content: { type: 'string' } }, required: ['title'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_remember',
+      description: 'Delete a remember-item by title match.',
+      parameters: { type: 'object', properties: { title_match: { type: 'string' } }, required: ['title_match'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'navigate',
-      description: 'Open a tab of the app.',
-      parameters: { type: 'object', properties: { page: { type: 'string', enum: ['home', 'today', 'tasks', 'calendar', 'productivity', 'projects', 'goals', 'notes', 'ideas', 'reminders', 'stats', 'focus', 'review', 'settings'] } }, required: ['page'] },
+      description: 'Open a tab of the app. For Library sections use page=library with tab=notes|ideas|remember.',
+      parameters: {
+        type: 'object',
+        properties: {
+          page: { type: 'string', enum: ['home', 'today', 'tasks', 'calendar', 'productivity', 'projects', 'goals', 'library', 'notes', 'ideas', 'remember', 'reminders', 'stats', 'focus', 'review', 'search', 'settings'] },
+          tab: { type: 'string', enum: ['notes', 'ideas', 'remember'] },
+        },
+        required: ['page'],
+      },
     },
   },
   {
@@ -139,7 +244,10 @@ const TOOLS = [
 
 const SYSTEM_PROMPT = `You are LifeOS Assistant, the built-in VOICE assistant of a personal productivity app — like a human helper sitting next to the user. Talk naturally, briefly, and warmly, the way a person would.
 
-You can CHAT and you can ACT:
+You can CHAT and you can ACT — and you have FULL control of the app:
+- Tasks (add/complete/delete/reschedule/reprioritize), notes, standalone reminders, ideas, remember-items, projects, goals — you manage every section.
+- You can navigate anywhere: "open my notes", "show ideas", "go to the calendar" — use navigate. For Library sections pass page=library with tab=notes|ideas|remember.
+- "Capture an idea with camera/photo" → open_capture (the app opens the camera capture flow).
 - Small talk or general conversation: just reply in natural spoken language, 1-2 short sentences a person would actually say out loud.
 - Questions about the user's data ("what's on friday", "when is my exam"): call query_tasks (or summarize_day) and ANSWER with the results in natural speech.
 - Commands: call the right tool, then confirm briefly and naturally ("Done — gym at 6 tomorrow, alarm set.").
@@ -151,6 +259,7 @@ Rules:
 - "remind me about X": if X likely exists use set_reminder(true), else create with remind_me=true.
 - "don't remind me about X": set_reminder(false).
 - Prefer add_task for actions, add_note for information, add_reminder for pure time nudges.
+- Deletes are explicit-only: call delete_* tools only when the user clearly asked to remove something.
 - Use the conversation history so follow-ups ("move it to friday", "and add milk too") resolve from context.
 - Your reply is SPOKEN OUT LOUD: no markdown, no lists, no emoji — plain conversational sentences.
 - If you genuinely can't help, say so briefly in a human way and suggest what you CAN do.`;

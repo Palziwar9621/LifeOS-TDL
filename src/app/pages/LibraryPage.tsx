@@ -1,5 +1,5 @@
 // LifeOS — Library hub: Notes + Ideas + Remember in one place (less scattered nav)
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { NotesPage } from './NotesPage';
 import { IdeasPage } from './IdeasPage';
 import { RememberPage } from './RememberPage';
@@ -13,7 +13,21 @@ const TABS: { key: Tab; label: string }[] = [
 ];
 
 export function LibraryPage() {
-  const [tab, setTab] = useState<Tab>('notes');
+  const [tab, setTab] = useState<Tab>(() => {
+    // Voice assistant: navigate({page:'library', tab:'ideas'}) sets this
+    // before dispatching the navigation, so the requested subtab opens.
+    try { return ((window as any).__lifeosLibraryTab as Tab) ?? 'notes'; } catch { return 'notes'; }
+  });
+
+  // Voice assistant tab jumps ("open my ideas", "show my notes").
+  useEffect(() => {
+    const onTab = (e: Event) => {
+      const t = (e as CustomEvent).detail;
+      if (t === 'notes' || t === 'ideas' || t === 'remember') setTab(t);
+    };
+    window.addEventListener('lifeos-library-tab', onTab);
+    return () => window.removeEventListener('lifeos-library-tab', onTab);
+  }, []);
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">

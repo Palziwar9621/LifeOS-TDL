@@ -6,6 +6,7 @@ import type { Page } from './store';
 import { Icon, Logo, Avatar, useConfirm } from '../ui/components';
 import { getProfile, getOutboxCount, subscribeDb, getLastSyncError } from '../lib/db';
 import { QuickAddModal } from './quickadd';
+import { IdeaCaptureModal } from './IdeaCapture';
 import { VoiceAssistant } from './VoiceAssistant';
 import { useI18n } from '../lib/i18n';
 
@@ -18,6 +19,7 @@ const NAV: { key: Page; labelKey: string; icon: string }[] = [
   { key: 'projects', labelKey: 'nav.projects', icon: 'folder' },
   { key: 'goals', labelKey: 'nav.goals', icon: 'target' },
   { key: 'library', labelKey: 'nav.library', icon: 'note' },
+  { key: 'reminders', labelKey: 'nav.reminders', icon: 'bell' },
   { key: 'stats', labelKey: 'nav.stats', icon: 'chart' },
   { key: 'focus', labelKey: 'nav.focus', icon: 'focus' },
   { key: 'settings', labelKey: 'nav.settings', icon: 'settings' },
@@ -27,6 +29,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const { page, navigate, session, signOut, toast } = useApp();
   const { t } = useI18n();
   const [qOpen, setQOpen] = useState(false);
+  const [captureOpen, setCaptureOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [pending, setPending] = useState(getOutboxCount());
   const { confirm, confirmEl } = useConfirm();
@@ -35,6 +38,14 @@ export function Shell({ children }: { children: React.ReactNode }) {
     return subscribeDb(() => {
       setPending(getOutboxCount());
     });
+  }, []);
+
+  // Voice assistant: "capture an idea" / "new idea with camera" opens the
+  // full capture flow (photo camera, voice note, or plain text idea).
+  useEffect(() => {
+    const open = () => setCaptureOpen(true);
+    window.addEventListener('lifeos-open-capture', open);
+    return () => window.removeEventListener('lifeos-open-capture', open);
   }, []);
 
   useEffect(() => {
@@ -148,6 +159,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         {moreOpen && <MoreSheet onClose={() => setMoreOpen(false)} />}
       </div>
       <QuickAddModal open={qOpen} onClose={() => setQOpen(false)} />
+      <IdeaCaptureModal open={captureOpen} onClose={() => setCaptureOpen(false)} onCaptured={() => setCaptureOpen(false)} />
       <VoiceAssistant />
       {confirmEl}
     </div>
@@ -178,6 +190,11 @@ function MoreSheet({ onClose }: { onClose: () => void }) {
   const { navigate } = useApp();
   const { t } = useI18n();
   const items = NAV.filter((n) => !['home', 'today', 'tasks', 'calendar'].includes(n.key));
+  // Reminders were previously missing from every nav — reminders showed on
+  // the calendar but the Reminders page itself was unreachable.
+  if (!items.some((n) => n.key === 'reminders')) {
+    items.unshift({ key: 'reminders', labelKey: 'nav.reminders', icon: 'bell' });
+  }
   return (
     <div className="md:hidden fixed inset-0 z-40" role="dialog" aria-label="More sections">
       <div className="absolute inset-0 bg-slate-950/40" onClick={onClose} />

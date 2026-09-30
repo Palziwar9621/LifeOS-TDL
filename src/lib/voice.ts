@@ -12,7 +12,11 @@
 import { parseCommand } from './assistant';
 import type { AssistantIntent } from './assistant';
 import { askBrain, type AppContext, type ToolCall } from './brain';
-import { createTask, createNote, createReminder, updateTask, deleteTask, dbState, getSettings } from './db';
+import {
+  createTask, createNote, deleteNote, createReminder, deleteReminder, updateTask, deleteTask,
+  createIdea, deleteIdea, convertIdeaToProject, createRememberItem, deleteRememberItem,
+  createProject, deleteProject, createGoal, deleteGoal, dbState, getSettings,
+} from './db';
 import { todayStr } from './dates';
 import { parseQuickAdd } from './quickadd';
 
@@ -37,11 +41,14 @@ export interface AssistantSettings {
 }
 const KEY = 'lifeos.assistant';
 export function getAssistantSettings(): AssistantSettings {
+  // Voice assistant is ON by default: first-time users should get the
+  // full experience without digging through settings. Users who explicitly
+  // turned it off keep their choice (their saved 'enabled: false' wins).
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { enabled: false, wakeWord: 'hey lifeos', listenContinuously: true, useAI: true, ...JSON.parse(raw) };
+    if (raw) return { enabled: true, wakeWord: 'hey lifeos', listenContinuously: true, useAI: true, ...JSON.parse(raw) };
   } catch { /* ignore */ }
-  return { enabled: false, wakeWord: 'hey lifeos', listenContinuously: true, useAI: true };
+  return { enabled: true, wakeWord: 'hey lifeos', listenContinuously: true, useAI: true };
 }
 export function saveAssistantSettings(s: AssistantSettings): void {
   try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* ignore */ }
@@ -287,9 +294,68 @@ async function runTool(
         title: call.args.title,
         due_at: call.args.due_at ?? new Date(Date.now() + 3600_000).toISOString(),
         priority: 'medium',
+        recurrence: (call.args.recurrence ?? null) as any,
       });
       import('./nativeAlarms').then((m) => m.syncNativeAlarms());
       return `Reminder set: ${call.args.title}`;
+    }
+    case 'delete_reminder': {
+      const q = String(call.args.title_match ?? '').toLowerCase();
+      const r = s.reminders.find((x) => !x.deleted && x.title.toLowerCase().includes(q))
+        ?? s.reminders.find((x) => !x.deleted && q.includes(x.title.toLowerCase()));
+      if (!r) return `I couldn't find a reminder matching "${call.args.title_match}"`;
+      await deleteReminder(r.id);
+      import('./nativeAlarms').then((m) => m.syncNativeAlarms());
+      return `Deleted reminder: ${r.title}`;
+    }
+    case 'delete_note': {
+      const q = String(call.args.title_match ?? '').toLowerCase();
+      const n = s.notes.find((x) => !x.deleted && x.title.toLowerCase().includes(q))
+        ?? s.notes.find((x) => !x.deleted && q.includes(x.title.toLowerCase()));
+      if (!n) return `I couldn't find a note matching "${call.args.title_match}"`;
+      await deleteNote(n.id);
+      return `Deleted note: ${n.title}`;
+    }
+    case 'add_idea': {
+      await createIdea({
+        title: String(call.args.title ?? '').slice(0, 80) || 'Voice idea',
+        description: call.args.description ?? null,
+      });
+      return `Idea saved: ${call.args.title}`;
+    }
+    case 'delete_idea': {
+      const q = String(call.args.title_match ?? '').toLowerCase();
+      const i = s.ideas.find((x) => !x.deleted && x.title.toLowerCase().includes(q))
+        ?? s.ideas.find((x) => !x.deleted && q.includes(x.title.toLowerCase()));
+      if (!i) return `I couldn't find an idea matching "${call.args.title_match}"`;
+      await deleteIdea(i.id);
+      return `Deleted idea: ${i.title}`;
+    }
+    case 'idea_to_project': {
+      const q = String(call.args.title_match ?? '').toLowerCase();
+      const i = s.ideas.find((x) => !x.deleted && x.title.toLowerCase().includes(q))
+        ?? s.ideas.find((x) => !x.deleted && q.includes(x.title.toLowerCase()));
+      if (!i) return `I couldn't find an idea matching "${call.args.title_match}"`;
+      const p = await convertIdeaToProject(i.id);
+      return p ? `Turned "${i.title}" into the project "${p.name}".` : `Could not convert ${i.title}.`;
+    }
+    case 'open_capture': {
+      // The UI listens for this event (VoiceAssistant dispatches it) and
+      // opens the idea-capture modal — camera or text, the user's choice.
+      window.dispatchEvent(new CustomEvent('lifeos-open-capture'));
+      return 'Opening idea capture — take a photo or type it.';
+    }
+    case 'add_remember': {
+      await createRememberItem({ title: String(call.args.title ?? '').slice(0, 80), content: call.args.content ?? '' });
+      return `Remember item saved: ${call.args.title}`;
+    }
+    case 'delete_remember': {
+      const q = String(call.args.title_match ?? '').toLowerCase();
+      const it = s.remember_items.find((x) => !x.deleted && x.title.toLowerCase().includes(q))
+        ?? s.remember_items.find((x) => !x.deleted && q.includes(x.title.toLowerCase()));
+      if (!it) return `I couldn't find that in Remember.`;
+      await deleteRememberItem(it.id);
+      return `Deleted remember item: ${it.title}`;
     }
     case 'complete_task':
     case 'delete_task':
@@ -360,15 +426,51 @@ async function runTool(
       return `Updated ${t.title}: ${changes}`;
     }
     case 'create_project': {
-      const { createProject } = await import('./db');
       const name = String(call.args.name ?? '').slice(0, 60);
       if (!name) return 'I need a name for the project.';
       await createProject({ name } as any);
       return `Project created: ${name}`;
     }
+    case 'delete_project': {
+      const q = String(call.args.name_match ?? '').toLowerCase();
+      const p = s.projects.find((x) => !x.archived && x.name.toLowerCase().includes(q));
+      if (!p) return `I couldn't find a project matching "${call.args.name_match}"`;
+      await deleteProject(p.id);
+      return `Deleted project ${p.name}. Its tasks are kept but unlinked.`;
+    }
+    case 'create_goal': {
+      const title = String(call.args.title ?? '').slice(0, 80);
+      if (!title) return 'What is the goal?';
+      await createGoal({ title } as any);
+      return `Goal set: ${title}`;
+    }
+    case 'delete_goal': {
+      const q = String(call.args.title_match ?? '').toLowerCase();
+      const g = s.goals.find((x) => x.title.toLowerCase().includes(q));
+      if (!g) return `I couldn't find a goal matching "${call.args.title_match}"`;
+      await deleteGoal(g.id);
+      return `Deleted goal: ${g.title}`;
+    }
     case 'navigate': {
-      ctx.navigate(call.args.page);
-      return `Opened ${call.args.page}`;
+      const page = String(call.args.page ?? 'home');
+      const tab = call.args.tab ? String(call.args.tab) : undefined;
+      // Library sections: 'notes' | 'ideas' | 'remember' all live inside the
+      // Library page as subtabs.
+      if (page === 'library' && tab) {
+        (window as any).__lifeosLibraryTab = tab;
+        window.dispatchEvent(new CustomEvent('lifeos-library-tab', { detail: tab }));
+        ctx.navigate('library');
+      } else {
+        // Direct legacy keys route to Library with the right tab preselected.
+        if (page === 'notes' || page === 'ideas' || page === 'remember') {
+          (window as any).__lifeosLibraryTab = page;
+          window.dispatchEvent(new CustomEvent('lifeos-library-tab', { detail: page }));
+          ctx.navigate('library');
+        } else {
+          ctx.navigate(page as any);
+        }
+      }
+      return `Opened ${tab ?? page}`;
     }
     case 'open_app': {
       const n = nativeSpeech();
