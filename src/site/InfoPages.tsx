@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { SiteChrome, useSeo } from './SiteChrome';
 import { SITE } from '../lib/site';
+import { FaqList, FaqStructuredData } from './FaqContent';
 
 /* ------------------------------------------------------------------ */
 /* About                                                               */
@@ -428,10 +429,32 @@ export function TermsPage() {
 }
 
 /* ------------------------------------------------------------------ */
+/* FAQ                                                                 */
+/* ------------------------------------------------------------------ */
+export function FaqPage() {
+  useSeo({
+    title: 'LifeOS FAQ — frequently asked questions',
+    description: 'Answers about LifeOS pricing, accounts, offline use, AI voice, alarms, platforms, data and themes.',
+    path: '/faq',
+  });
+  return (
+    <SiteChrome>
+      <FaqStructuredData />
+      <main className="prose-page">
+        <h1>Frequently Asked Questions</h1>
+        <span className="updated">Everything you need to know about LifeOS</span>
+        <p>Find answers about getting started, supported platforms, privacy, offline use and the LifeOS productivity features.</p>
+        <FaqList />
+      </main>
+    </SiteChrome>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* 404                                                                 */
 /* ------------------------------------------------------------------ */
 export function NotFoundPage() {
-  useSeo({ title: 'Page not found — LifeOS', description: 'That page does not exist.', path: '/404' });
+  useSeo({ title: 'Page not found — LifeOS', description: 'That page does not exist.', path: '/404', noIndex: true });
   return (
     <SiteChrome>
       <main className="prose-page" style={{ textAlign: 'center' }}>

@@ -6,7 +6,7 @@
   "description": "LifeOS — a personal productivity system: tasks, projects, goals, notes, habits of mind, weekly planner, calendar, focus & stats. Local-first PWA with Supabase sync.",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/prerender.mjs",
     "preview": "vite preview --host",
     "typecheck": "tsc --noEmit"
   },

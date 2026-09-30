@@ -1,12 +1,17 @@
 // LifeOS — public marketing site shell (header/footer) + SEO head helper.
-import React, { useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect } from 'react';
 import { SITE, canonicalUrl } from '../lib/site';
 import { Logo } from '../ui/components';
 import { KageAmbient } from './KageAmbient';
 import './site.css';
 
+export type SeoOptions = { title: string; description: string; path: string; noIndex?: boolean };
+// Build-time rendering collects the exact same metadata used by client navigation.
+export const SeoContext = createContext<((opts: SeoOptions) => void) | null>(null);
+
 /** Sets document title, meta description, canonical and OG/Twitter tags per public page. */
-export function useSeo(opts: { title: string; description: string; path: string }) {
+export function useSeo(opts: SeoOptions) {
+  useContext(SeoContext)?.(opts);
   useEffect(() => {
     document.title = opts.title;
     const set = (selector: string, attr: string, value: string, create: () => HTMLElement) => {
@@ -23,10 +28,10 @@ export function useSeo(opts: { title: string; description: string; path: string 
     set('meta[property="og:title"]', 'content', opts.title, () => {
       const m = document.createElement('meta'); m.setAttribute('property', 'og:title'); return m;
     });
-    set('meta[property="og:image"]', 'content', '/og.png', () => {
+    set('meta[property="og:image"]', 'content', canonicalUrl('/og.png'), () => {
       const m = document.createElement('meta'); m.setAttribute('property', 'og:image'); return m;
     });
-    set('meta[name="twitter:image"]', 'content', '/og.png', () => {
+    set('meta[name="twitter:image"]', 'content', canonicalUrl('/og.png'), () => {
       const m = document.createElement('meta'); m.setAttribute('name', 'twitter:image'); return m;
     });
     set('meta[property="og:description"]', 'content', opts.description, () => {
@@ -41,7 +46,10 @@ export function useSeo(opts: { title: string; description: string; path: string 
     set('meta[name="twitter:description"]', 'content', opts.description, () => {
       const m = document.createElement('meta'); m.setAttribute('name', 'twitter:description'); return m;
     });
-  }, [opts.title, opts.description, opts.path]);
+    set('meta[name="robots"]', 'content', opts.noIndex ? 'noindex, follow' : 'index, follow', () => {
+      const m = document.createElement('meta'); m.setAttribute('name', 'robots'); return m;
+    });
+  }, [opts.title, opts.description, opts.path, opts.noIndex]);
 }
 
 export function SiteChrome({ children }: { children: React.ReactNode }) {

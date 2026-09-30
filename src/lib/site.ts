@@ -1,13 +1,12 @@
 // LifeOS — central site configuration.
 // The production domain may change (currently the temporary Vercel domain).
-// Update CANONICAL_URL here and every canonical URL, sitemap entry and
-// structured-data reference follows. Do not hardcode the domain elsewhere.
+// VITE_SITE_URL also controls generated HTML, sitemap and robots.txt at build time.
 
 export const SITE = {
   name: 'LifeOS',
   tagline: 'Your life, organized',
   /** Canonical origin, no trailing slash. Temporary until a custom domain is configured. */
-  url: (import.meta.env.VITE_SITE_URL as string | undefined) ?? 'https://life-os-tdl.vercel.app',
+  url: ((import.meta.env.VITE_SITE_URL as string | undefined) || 'https://life-os-tdl.vercel.app').replace(/\/+$/, ''),
   /** Creator / support contact (verified by the product owner). */
   creator: 'Kratim Krishan Singh',
   email: 'kratimks@gmail.com',
@@ -23,5 +22,5 @@ export const SITE = {
 
 export const canonicalUrl = (path = '/') => {
   const p = path.startsWith('/') ? path : `/${path}`;
-  return `${SITE.url}${p === '/' ? '' : p}`;
+  return `${SITE.url}${p}`;
 };

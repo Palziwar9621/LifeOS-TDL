@@ -3,13 +3,14 @@ import React from 'react';
 import { SiteChrome, useSeo } from './SiteChrome';
 import { HeroScene } from './HeroScene';
 import { SITE } from '../lib/site';
+import { FaqList } from './FaqContent';
 
 export function HomePage() {
   useSeo({
     title: 'LifeOS — AI-Powered Personal Productivity & Task Manager',
     description:
       'Organize tasks, plan your day, manage reminders, build routines and track productivity with LifeOS, your all-in-one personal productivity workspace.',
-    path: '/home',
+    path: '/',
   });
 
   return (
@@ -168,47 +169,7 @@ export function HomePage() {
 
         {/* ---------------- FAQ ---------------- */}
         <Section kicker="FAQ" title="Common questions" id="faq">
-          <div className="faq">
-            <Faq q="Is LifeOS free?">
-              Yes — LifeOS is free to use during the Beta. Pricing after Beta hasn't been
-              decided; if that changes, it will be announced in the app and on this site first.
-            </Faq>
-            <Faq q="Do I need an account?">
-              You can continue as a guest and use LifeOS entirely on your device — tasks, notes,
-              routines and more work offline. Create a free account when you want cloud sync
-              across devices, the AI assistant and account recovery. Guest data can be migrated
-              into your account later.
-            </Faq>
-            <Faq q="Does LifeOS work offline?">
-              Yes. Core features — tasks, notes, reminders, routines, calendar, focus — work
-              offline and queue your changes. Cloud sync, the AI assistant and push alarms need
-              an internet connection.
-            </Faq>
-            <Faq q="How does the AI voice assistant handle my voice?">
-              Speech is transcribed on your device (or natively on Android). Only the transcribed
-              text — never audio — is sent to the AI service when the assistant is enabled, and
-              recordings are not stored. You can switch the assistant to an offline parser in
-              Settings at any time.
-            </Faq>
-            <Faq q="Will alarms ring when the app is closed?">
-              On Android, exact alarms use the system AlarmManager and survive restarts. On
-              Windows, alarms ring while the app runs in the tray. In browsers, optional web-push
-              alarms cover closed-app alerts where supported.
-            </Faq>
-            <Faq q="Which platforms are supported?">
-              Web/PWA, an Android app (APK), and Windows installer plus portable builds. All
-              three share the same account and data.
-            </Faq>
-            <Faq q="Where is my data stored, and how do I delete it?">
-              Locally on your device and in your own Supabase-backed account. Export everything
-              from Settings → Backup &amp; Export. You can delete your account and all associated
-              data from Settings → Security → Delete Account.
-            </Faq>
-            <Faq q="What themes are available?">
-              Light, dark and system modes, plus premium themes: Kage (ink black with a
-              vermilion glow, inspired by our landing page) and Obsidian &amp; Champagne.
-            </Faq>
-          </div>
+          <FaqList />
         </Section>
 
         {/* ---------------- FINAL CTA ---------------- */}
@@ -255,14 +216,5 @@ function Step(props: { n: string; t: string; d: string }) {
       <b>{props.n}. {props.t}</b>
       <span>{props.d}</span>
     </div>
-  );
-}
-
-function Faq(props: { q: string; children: React.ReactNode }) {
-  return (
-    <details>
-      <summary>{props.q}</summary>
-      <div className="faq-a">{props.children}</div>
-    </details>
   );
 }

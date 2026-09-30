@@ -2,7 +2,7 @@
 // Mounted from main.tsx. App routes (/app, #demo) hand off to the app shell.
 import React, { useEffect, useState } from 'react';
 import { HomePage } from './HomePage';
-import { AboutPage, ContactPage, PrivacyPage, TermsPage, NotFoundPage } from './InfoPages';
+import { AboutPage, ContactPage, PrivacyPage, TermsPage, FaqPage, NotFoundPage } from './InfoPages';
 
 function isAppRoute(pathname: string): boolean {
   return pathname === '/app' || pathname.startsWith('/app/');
@@ -20,10 +20,13 @@ export function SiteApp() {
       const a = (e.target as HTMLElement).closest('a');
       if (!a) return;
       const href = a.getAttribute('href') ?? '';
-      if (!href.startsWith('/') || href.startsWith('/app') || a.target === '_blank') return;
+      if (!href.startsWith('/') || href.startsWith('//') || a.target || a.hasAttribute('download')) return;
+      const url = new URL(href, window.location.origin);
+      // Only public React routes are SPA navigations. Static downloads must load normally.
+      if (!['/', '/home', '/about', '/contact', '/privacy', '/terms', '/faq'].includes(url.pathname.replace(/\/+$/, '') || '/')) return;
       e.preventDefault();
       window.history.pushState({}, '', href);
-      setPath(href);
+      setPath(url.pathname);
       window.scrollTo(0, 0);
     };
     document.addEventListener('click', onClick);
@@ -42,6 +45,7 @@ export function SiteApp() {
     case '/contact': return <ContactPage />;
     case '/privacy': return <PrivacyPage />;
     case '/terms': return <TermsPage />;
+    case '/faq': return <FaqPage />;
     default: return <NotFoundPage />;
   }
 }
