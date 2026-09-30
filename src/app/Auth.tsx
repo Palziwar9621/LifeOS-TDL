@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Logo, Icon } from '../ui/components';
 import { setSupabaseConfig, loadSupabaseConfig } from '../lib/supabase';
 import { signUp, signIn, sendPasswordReset } from '../lib/auth';
+import { useI18n } from '../lib/i18n';
 import { useApp } from './store';
 
 export function SetupScreen({ onConfigured }: { onConfigured: () => void }) {
@@ -133,14 +134,15 @@ export function AuthScreen() {
     }
   };
 
+  const { t } = useI18n();
   return (
     <AuthLayout>
       <Logo size={32} />
       <h1 className="mt-5 text-2xl font-extrabold tracking-tight">
-        {mode === 'login' ? 'Welcome back' : mode === 'signup' ? 'Create your account' : 'Reset your password'}
+        {mode === 'login' ? t('auth.welcome') : mode === 'signup' ? t('auth.createAccount') : t('auth.forgot')}
       </h1>
       <p className="mt-1 text-sm muted">
-        {mode === 'login' ? 'Sign in to your LifeOS.' : mode === 'signup' ? 'One account — every device.' : 'We\'ll email you a reset link.'}
+        {mode === 'login' ? t('auth.welcomeSub') : mode === 'signup' ? 'One account — every device.' : 'We\'ll email you a reset link.'}
       </p>
 
       <form className="mt-6 space-y-3 text-left" onSubmit={submit}>
@@ -151,55 +153,54 @@ export function AuthScreen() {
           </div>
         )}
         <div>
-          <label className="label">Email</label>
+          <label className="label">{t('auth.email')}</label>
           <input type="email" className="input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" required />
         </div>
         {mode !== 'forgot' && (
           <div>
-            <label className="label">Password</label>
+            <label className="label">{t('auth.password')}</label>
             <input type="password" className="input" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} required minLength={6} />
           </div>
         )}
         {err && <p className="rounded-xl bg-rose-50 dark:bg-rose-950/40 px-3 py-2 text-sm text-rose-700 dark:text-rose-300">{err}</p>}
         {info && <p className="rounded-xl bg-emerald-50 dark:bg-emerald-950/40 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">{info}</p>}
         <button className="btn-primary w-full" type="submit" disabled={busy}>
-          {busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : mode === 'signup' ? 'Create account' : 'Send reset link'}
+          {busy ? t('common.loading') : mode === 'login' ? t('auth.signIn') : mode === 'signup' ? t('auth.createAccount') : 'Send reset link'}
         </button>
       </form>
 
       <div className="mt-4 text-sm">
         {mode === 'login' && (
           <>
-            <button className="text-brand-600 dark:text-brand-300 font-semibold" onClick={() => setMode('signup')}>Create an account</button>
+            <button className="text-brand-600 dark:text-brand-300 font-semibold" onClick={() => setMode('signup')}>{t('auth.createAccount')}</button>
             <span className="mx-2 muted">·</span>
-            <button className="muted" onClick={() => setMode('forgot')}>Forgot password?</button>
+            <button className="muted" onClick={() => setMode('forgot')}>{t('auth.forgot')}</button>
           </>
         )}
         {mode !== 'login' && (
-          <button className="text-brand-600 dark:text-brand-300 font-semibold" onClick={() => setMode('login')}>← Back to sign in</button>
+          <button className="text-brand-600 dark:text-brand-300 font-semibold" onClick={() => setMode('login')}>← {t('auth.signIn')}</button>
         )}
       </div>
 
       <div className="divider my-5" />
       <button className="btn-secondary w-full" onClick={() => { continueAsGuest(); toast('Guest mode — your data stays on this device only', 'info'); }}>
-        Continue as Guest
+        {t('auth.guest')}
       </button>
       <p className="mt-2 text-xs muted text-left">
-        Guest mode works offline on this device only. Data isn't synced or backed up — clearing
-        browser/app data or uninstalling removes it. You can create an account later and your
-        guest data will be migrated.
+        {t('auth.guestNote')}
       </p>
     </AuthLayout>
   );
 }
 
 function AuthLayout({ children }: { children: React.ReactNode }) {
+  const { t } = useI18n();
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-50 via-slate-100 to-violet-50 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900 px-4 py-10">
       <div className="card w-full max-w-md p-8 text-center animate-slide-up">
         <div className="flex flex-col items-center">{children}</div>
       </div>
-      <p className="fixed bottom-4 inset-x-0 text-center text-xs muted">LifeOS · your life, organized</p>
+      <p className="fixed bottom-4 inset-x-0 text-center text-xs muted">LifeOS · {t('auth.tagline')}</p>
     </div>
   );
 }

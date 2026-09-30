@@ -7,23 +7,25 @@ import { Icon, Logo, Avatar, useConfirm } from '../ui/components';
 import { getProfile, getOutboxCount, subscribeDb, getLastSyncError } from '../lib/db';
 import { QuickAddModal } from './quickadd';
 import { VoiceAssistant } from './VoiceAssistant';
+import { useI18n } from '../lib/i18n';
 
-const NAV: { key: Page; label: string; icon: string }[] = [
-  { key: 'home', label: 'Home', icon: 'home' },
-  { key: 'today', label: 'Today', icon: 'sun' },
-  { key: 'tasks', label: 'Tasks', icon: 'list' },
-  { key: 'calendar', label: 'Calendar', icon: 'calendar' },
-  { key: 'productivity', label: 'Productivity', icon: 'check' },
-  { key: 'projects', label: 'Projects', icon: 'folder' },
-  { key: 'goals', label: 'Goals', icon: 'target' },
-  { key: 'library', label: 'Library', icon: 'note' },
-  { key: 'stats', label: 'Insights', icon: 'chart' },
-  { key: 'focus', label: 'Focus', icon: 'focus' },
-  { key: 'settings', label: 'Settings', icon: 'settings' },
+const NAV: { key: Page; labelKey: string; icon: string }[] = [
+  { key: 'home', labelKey: 'nav.home', icon: 'home' },
+  { key: 'today', labelKey: 'nav.today', icon: 'sun' },
+  { key: 'tasks', labelKey: 'nav.tasks', icon: 'list' },
+  { key: 'calendar', labelKey: 'nav.calendar', icon: 'calendar' },
+  { key: 'productivity', labelKey: 'nav.productivity', icon: 'check' },
+  { key: 'projects', labelKey: 'nav.projects', icon: 'folder' },
+  { key: 'goals', labelKey: 'nav.goals', icon: 'target' },
+  { key: 'library', labelKey: 'nav.library', icon: 'note' },
+  { key: 'stats', labelKey: 'nav.stats', icon: 'chart' },
+  { key: 'focus', labelKey: 'nav.focus', icon: 'focus' },
+  { key: 'settings', labelKey: 'nav.settings', icon: 'settings' },
 ];
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const { page, navigate, session, signOut, toast } = useApp();
+  const { t } = useI18n();
   const [qOpen, setQOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [pending, setPending] = useState(getOutboxCount());
@@ -67,7 +69,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               aria-current={page === item.key ? 'page' : undefined}
             >
               <Icon name={item.icon} className="h-[18px] w-[18px] shrink-0" />
-              <span className="flex-1">{item.label}</span>
+              <span className="flex-1">{t(item.labelKey)}</span>
               {item.key === 'tasks' && pending > 0 && (
                 <span className="chip chip-warn !py-0 text-[10px]">{pending}</span>
               )}
@@ -78,14 +80,14 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <div className="flex items-center gap-2 px-2 py-2">
           <Avatar url={profile?.avatar_url} name={profile?.username ?? session?.user?.email} size={36} />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold">{profile?.username ?? 'You'}</p>
+            <p className="truncate text-sm font-semibold">{profile?.username ?? t('common.you')}</p>
             <p className="truncate text-xs muted">{session?.user?.email}</p>
           </div>
           <button
             className="btn-ghost btn-sm"
-            aria-label="Sign out"
+            aria-label={t('auth.signOut')}
             onClick={() =>
-              confirm('Sign out?', 'Your data stays synced to your account and this device\'s offline cache is cleared.', () => { void signOut(); }, { confirmLabel: 'Sign out', danger: false })
+              confirm(t('auth.signOutConfirm'), t('auth.signOutBody'), () => { void signOut(); }, { confirmLabel: t('auth.signOut'), danger: false })
             }
           >
             <Icon name="logout" className="h-4 w-4" />
@@ -127,7 +129,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 aria-current={page === k ? 'page' : undefined}
               >
                 <Icon name={NAV.find((n) => n.key === k)?.icon ?? 'list'} className="h-5 w-5" />
-                {NAV.find((n) => n.key === k)?.label}
+                {t(NAV.find((n) => n.key === k)?.labelKey ?? 'nav.tasks')}
               </button>
             ))}
             <button
@@ -137,7 +139,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               onClick={() => setMoreOpen(true)}
             >
               <Icon name="more" className="h-5 w-5" />
-              More
+              {t('nav.more')}
             </button>
           </div>
         </nav>
@@ -154,6 +156,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
 function SyncBadge() {
   const { online, syncNow, pendingOps } = useApp();
+  const { t } = useI18n();
   const [busy, setBusy] = useState(false);
   const err = getLastSyncError();
   return (
@@ -163,23 +166,24 @@ function SyncBadge() {
       title={err && pendingOps > 0 ? `Sync problem: ${err}` : 'Sync now'}
     >
       <Icon name="sync" className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} />
-      {!online ? 'Offline — tap to retry'
+      {!online ? t('common.offline')
         : pendingOps > 0
-          ? (err ? `${pendingOps} pending — tap for reason` : `${pendingOps} change${pendingOps > 1 ? 's' : ''} pending`)
-          : 'Synced'}
+          ? (err ? `${pendingOps} ${t('common.pending')} — ${err}` : `${pendingOps} ${t('common.changesPending')}`)
+          : t('common.synced')}
     </button>
   );
 }
 
 function MoreSheet({ onClose }: { onClose: () => void }) {
   const { navigate } = useApp();
+  const { t } = useI18n();
   const items = NAV.filter((n) => !['home', 'today', 'tasks', 'calendar'].includes(n.key));
   return (
     <div className="md:hidden fixed inset-0 z-40" role="dialog" aria-label="More sections">
       <div className="absolute inset-0 bg-slate-950/40" onClick={onClose} />
       <div className="absolute inset-x-0 bottom-0 card rounded-b-none max-h-[80vh] overflow-y-auto animate-slide-up safe-bottom">
         <div className="sticky top-0 flex items-center justify-between px-5 py-4 bg-white/90 dark:bg-slate-900/90 backdrop-blur">
-          <h2 className="section-title">All sections</h2>
+          <h2 className="section-title">{t('nav.allSections')}</h2>
           <button className="btn-ghost btn-sm" onClick={onClose} aria-label="Close"><Icon name="x" className="h-4 w-4" /></button>
         </div>
         <div className="grid grid-cols-3 gap-2 p-4 pt-0">
@@ -187,7 +191,7 @@ function MoreSheet({ onClose }: { onClose: () => void }) {
             <button key={n.key} className="flex flex-col items-center gap-1.5 rounded-2xl bg-slate-100 dark:bg-slate-800 px-3 py-4 text-xs font-semibold"
               onClick={() => { navigate(n.key); onClose(); }}>
               <Icon name={n.icon} className="h-5 w-5 text-brand-600 dark:text-brand-300" />
-              {n.label}
+              {t(n.labelKey)}
             </button>
           ))}
         </div>

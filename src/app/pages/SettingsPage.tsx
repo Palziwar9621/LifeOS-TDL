@@ -8,6 +8,7 @@ import { exportAllJson, downloadJson, tasksCsv, parseBackupJson, readFileText } 
 import { requestNotificationPermission, notificationPermission } from '../../lib/notifications';
 import { enablePush, disablePush, pushSupported, pushPermission, sendTestPush, pushEnvironment, nativeAlarmsActive } from '../../lib/push';
 import { getAlertMode, setAlertMode, alertPermission, requestAlertPermission, type AlertMode } from '../../lib/alerts';
+import { useI18n, LANGUAGES } from '../../lib/i18n';
 import { nativeSyncStatus } from '../../lib/nativeAlarms';
 import { AlarmSoundPicker } from '../AlarmSoundPicker';
 import { updateUserPassword } from '../../lib/auth';
@@ -100,6 +101,7 @@ function AccountSection({ profile, toast }: any) {
 }
 
 function AppearanceSection({ theme, setTheme, premiumTheme, setPremiumTheme }: any) {
+  const { t, lang, setLang } = useI18n();
   const THEMES: { key: string; name: string; desc: string; bg: string; fg: string; accent: string; dark: boolean }[] = [
     { key: 'kage', name: 'Kage 影', desc: 'Ink black · vermilion · ambient glow', bg: '#0a0908', fg: '#efece4', accent: '#e0231c', dark: true },
     { key: 'noir', name: 'Obsidian & Champagne', desc: 'Velvet black · gold', bg: '#101013', fg: '#E9E9EC', accent: '#C9A96A', dark: true },
@@ -107,20 +109,33 @@ function AppearanceSection({ theme, setTheme, premiumTheme, setPremiumTheme }: a
 
   return (
     <section className="card p-5">
-      <h2 className="section-title mb-4">Appearance</h2>
+      <h2 className="section-title mb-4">{t('settings.appearance')}</h2>
 
-      <p className="label">Mode</p>
+      <p className="label">{t('settings.language')}</p>
+      <select
+        className="input mb-1"
+        value={lang}
+        onChange={(e) => setLang(e.target.value as any)}
+        aria-label={t('settings.language')}
+      >
+        {LANGUAGES.map((l) => (
+          <option key={l.code} value={l.code}>{l.label} · {l.english}</option>
+        ))}
+      </select>
+      <p className="text-xs muted mb-2">App interface language. Content you wrote stays as-is.</p>
+
+      <p className="label mt-4">{t('settings.mode')}</p>
       <div className="grid grid-cols-3 gap-2">
-        {(['light', 'dark', 'system'] as const).map((t) => (
-          <button key={t} className={`rounded-2xl p-4 text-sm font-semibold capitalize ring-1 transition ${theme === t ? 'ring-2 ring-brand-600 bg-brand-50 dark:bg-brand-900/30' : 'ring-slate-900/10 dark:ring-white/10 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
-            onClick={() => setTheme(t)}>
-            <span className="mb-1 block text-xl">{t === 'light' ? '☀️' : t === 'dark' ? '🌙' : '💻'}</span>
-            {t}
+        {(['light', 'dark', 'system'] as const).map((m) => (
+          <button key={m} className={`rounded-2xl p-4 text-sm font-semibold ring-1 transition ${theme === m ? 'ring-2 ring-brand-600 bg-brand-50 dark:bg-brand-900/30' : 'ring-slate-900/10 dark:ring-white/10 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+            onClick={() => setTheme(m)}>
+            <span className="mb-1 block text-xl">{m === 'light' ? '☀️' : m === 'dark' ? '🌙' : '💻'}</span>
+            {m === 'light' ? t('settings.modeLight') : m === 'dark' ? t('settings.modeDark') : t('settings.modeSystem')}
           </button>
         ))}
       </div>
 
-      <p className="label mt-5">Premium theme</p>
+      <p className="label mt-5">{t('settings.premiumTheme')}</p>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         <button
           className={`rounded-2xl p-4 text-left ring-1 transition ${premiumTheme == null ? 'ring-2 ring-brand-600 bg-brand-50 dark:bg-brand-900/30' : 'ring-slate-900/10 dark:ring-white/10 hover:bg-slate-50 dark:hover:bg-slate-800'}`}

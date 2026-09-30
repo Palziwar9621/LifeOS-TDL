@@ -73,10 +73,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [authLoading, setAuthLoading] = useState(true);
   const [configured, setConfigured] = useState<boolean>(() => hasSupabase() || isDemoMode() || isGuest());
   const [theme, setThemeState] = useState<'light' | 'dark' | 'system'>(
-    () => (localStorage.getItem('lifeos.theme') as any) ?? 'system'
+    () => (localStorage.getItem('lifeos.theme') as any) ?? 'dark'
   );
   const [premiumTheme, setPremiumThemeState] = useState<PremiumTheme | null>(
-    () => (localStorage.getItem('lifeos.premiumTheme') as PremiumTheme) ?? null
+    () => (localStorage.getItem('lifeos.premiumTheme') as PremiumTheme) ?? 'kage'
   );
   const [page, setPage] = useState<Page>(() => {
     // Restore the page across pull-to-refresh reloads (app shell reloads
