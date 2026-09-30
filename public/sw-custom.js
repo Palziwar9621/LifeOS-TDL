@@ -11,7 +11,16 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  // Purge ALL runtime caches on activation — stale precached app shells
+  // were serving old bundles after deploys (users stuck on previous UI).
+  event.waitUntil((async () => {
+    const names = await caches.keys();
+    await Promise.all(names.map((n) => caches.delete(n)));
+    await self.clients.claim();
+    // Tell every open client a new version took over so it can reload once.
+    const cs = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const c of cs) c.postMessage({ type: 'lifeos-sw-updated' });
+  })());
 });
 
 function parsePayload(raw) {

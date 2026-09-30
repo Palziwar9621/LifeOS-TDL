@@ -116,7 +116,8 @@ function createWindow() {
   // immediately instead of serving a stale bundle forever.
   win.webContents.session.clearStorageData({ storages: ['serviceworkers', 'cachestorage'] })
     .catch((err) => console.warn('cache clear failed:', err.message))
-    .then(() => win.loadURL(APP_URL));
+    // /app is the product itself; "/" is now the public marketing site.
+    .then(() => win.loadURL(APP_URL + '/app'));
 
   // If the site fails to load (offline/DNS), show something instead of a
   // blank window so the app never looks like it "didn't open".
