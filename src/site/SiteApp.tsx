@@ -34,8 +34,9 @@ export function SiteApp() {
 
   const clean = path.replace(/\/+$/, '') || '/';
   switch (clean) {
-    // NOTE: "/" is the app itself (installed PWAs + Android/Windows shells
-    // load it). The public marketing homepage lives at /home.
+    // "/" is the public homepage; /home kept as a legacy alias so old
+    // bookmarks and previously-shared links don't break.
+    case '/':
     case '/home': return <HomePage />;
     case '/about': return <AboutPage />;
     case '/contact': return <ContactPage />;

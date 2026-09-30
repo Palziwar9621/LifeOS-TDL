@@ -94,84 +94,61 @@
      -------------------------------------------------------------- */
      -------------------------------------------------------------- */
 
-  /* 1) Zen Paper — calm, high-end paper light mode */
-  html.theme-zen {
-    --color-slate-50: #fafbfb;
-    --color-slate-100: #f6f7f7;
-    --color-slate-200: #ecefec;
-    --color-slate-300: #d7dad9;
-    --color-slate-400: #9aa09e;
-    --color-slate-500: #6b716e;
-    --color-slate-600: #535856;
-    --color-slate-700: #41453f;
-    --color-slate-800: #2f3230;
-    --color-slate-900: #232624;
-    --color-slate-950: #1a1c1b;
-    --color-brand-50: #fbeeea;
-    --color-brand-100: #f6dbd2;
-    --color-brand-200: #ecbba9;
-    --color-brand-300: #e09880;
-    --color-brand-400: #d37055;
-    --color-brand-500: #c05f43;
-    --color-brand-600: #a84f36;
-    --color-brand-700: #8c412d;
-    --color-brand-800: #703424;
-    --color-brand-900: #54281c;
+  /* 1) Kage — ink black · vermilion. Matches the public site's Kage
+        landing palette (影): near-black surfaces, warm bone text, and the
+        vermilion gate accent. Works in light mode as a paper-ink look and
+        shines in dark mode as a true night-temple theme. */
+  html.theme-kage {
+    --color-slate-50: #f6f5f2;
+    --color-slate-100: #ecebe6;
+    --color-slate-200: #e2e0da;
+    --color-slate-300: #ccc9c1;
+    --color-slate-400: #98948b;
+    --color-slate-500: #6e6a62;
+    --color-slate-600: #55524b;
+    --color-slate-700: #413e38;
+    --color-slate-800: #2c2a26;
+    --color-slate-900: #1c1b18;
+    --color-slate-950: #11100e;
+    --color-brand-50: #fdeeea;
+    --color-brand-100: #f8d9d2;
+    --color-brand-200: #f0b3a7;
+    --color-brand-300: #e68877;
+    --color-brand-400: #e05a44;
+    --color-brand-500: #e0231c;
+    --color-brand-600: #c31f19;
+    --color-brand-700: #a11a15;
+    --color-brand-800: #7f150f;
+    --color-brand-900: #5c0f0b;
   }
 
-  /* 2) Deep Focus — sleek dark for night planning */
-  html.theme-focus.dark {
-    /* Roles (matching the app's dark utilities): 950 page bg · 900 card ·
-       800 input/hover surface · 600–700 borders · 200–400 light text ·
-       500 muted text. Ordered light→dark like Tailwind's default. */
-    --color-slate-50: #dde2e9;
-    --color-slate-100: #c9d0da;
-    --color-slate-200: #e6eaf0;
-    --color-slate-300: #b6bfcc;
-    --color-slate-400: #97a1b0;
-    --color-slate-500: #7b8595;
-    --color-slate-600: #3a4150;
-    --color-slate-700: #2b3140;
-    --color-slate-800: #191d26;
-    --color-slate-900: #14171f;
-    --color-slate-950: #0f1115;
-    --color-brand-50: #1c1d33;
-    --color-brand-100: #26284d;
-    --color-brand-200: #3f4287;
-    --color-brand-300: #6f71e8;
-    --color-brand-400: #8385ee;
-    --color-brand-500: #6366f1;
-    --color-brand-600: #7b7ef4;
-    --color-brand-700: #9799f7;
-    --color-brand-800: #b3b4fa;
-    --color-brand-900: #cfcffb;
+  /* Kage dark mode — the full night-temple treatment: true ink surfaces,
+     subtle vermilion ambient glow, and lantern-warm text. */
+  html.theme-kage.dark {
+    --color-slate-50: #eceae4;
+    --color-slate-100: #d8d5cd;
+    --color-slate-200: #efece4;
+    --color-slate-300: #b5b1a7;
+    --color-slate-400: #928e85;
+    --color-slate-500: #757168;
+    --color-slate-600: #34322d;
+    --color-slate-700: #26241f;
+    --color-slate-800: #191813;
+    --color-slate-900: #12110d;
+    --color-slate-950: #0a0908;
+    --color-brand-50: #2a120e;
+    --color-brand-100: #3d1a14;
+    --color-brand-200: #612619;
+    --color-brand-300: #9c3a24;
+    --color-brand-400: #d14a30;
+    --color-brand-500: #e0231c;
+    --color-brand-600: #ff4a38;
+    --color-brand-700: #ff6f58;
+    --color-brand-800: #ff937d;
+    --color-brand-900: #ffb6a3;
   }
 
-  html.theme-nordic {
-    --color-slate-50: #f6f8f9;
-    --color-slate-100: #f0f3f5;
-    --color-slate-200: #e2e7eb;
-    --color-slate-300: #c9d2d9;
-    --color-slate-400: #8b99a7;
-    --color-slate-500: #5f6f7e;
-    --color-slate-600: #4a5a68;
-    --color-slate-700: #38485a;
-    --color-slate-800: #293649;
-    --color-slate-900: #1d2a3a;
-    --color-slate-950: #111827;
-    --color-brand-50: #e9f8f2;
-    --color-brand-100: #d1f0e3;
-    --color-brand-200: #a3e0c9;
-    --color-brand-300: #6fcdac;
-    --color-brand-400: #3cba92;
-    --color-brand-500: #10b981;
-    --color-brand-600: #0e9e6f;
-    --color-brand-700: #0b825b;
-    --color-brand-800: #086647;
-    --color-brand-900: #064b35;
-  }
-
-  /* 5) Obsidian & Champagne — velvet-black dark, warm gold accents */
+  /* 2) Obsidian & Champagne — velvet-black dark, warm gold accents */
   html.theme-noir.dark {
     --color-slate-50: #e2e2e6;
     --color-slate-100: #cfcfd4;
@@ -314,4 +291,96 @@
   .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
   .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
   .safe-top { padding-top: env(safe-area-inset-top); }
+}
+
+/* --------------------------------------------------------------
+   Kage theme — ambient animation layer (影).
+   Pure CSS “3D-ish” atmosphere for the app when the Kage theme is
+   active: a slow-breathing vermilion lantern glow behind the page,
+   drifting ember particles, and subtle depth on cards. GPU-cheap
+   (transform/opacity only) and fully disabled under
+   prefers-reduced-motion.
+   -------------------------------------------------------------- */
+html.theme-kage body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  /* lantern glow — a warm vermilion bloom that breathes */
+  background:
+    radial-gradient(60vw 50vh at 85% -10%, rgba(224, 35, 28, 0.16), transparent 60%),
+    radial-gradient(50vw 40vh at -10% 110%, rgba(224, 35, 28, 0.09), transparent 60%);
+  animation: kage-breathe 9s ease-in-out infinite;
+}
+html.theme-kage.dark body::before {
+  background:
+    radial-gradient(60vw 50vh at 85% -10%, rgba(224, 35, 28, 0.22), transparent 60%),
+    radial-gradient(50vw 40vh at -10% 110%, rgba(224, 90, 60, 0.12), transparent 60%);
+}
+@keyframes kage-breathe {
+  0%, 100% { opacity: 0.75; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.06); }
+}
+
+/* drifting embers — a handful of blurred motes rising slowly */
+html.theme-kage body::after {
+  content: '';
+  position: fixed;
+  inset: -20% 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background-image:
+    radial-gradient(3px 3px at 12% 80%, rgba(255, 120, 90, 0.8), transparent 70%),
+    radial-gradient(2px 2px at 28% 90%, rgba(255, 160, 110, 0.6), transparent 70%),
+    radial-gradient(2.5px 2.5px at 55% 95%, rgba(255, 120, 90, 0.7), transparent 70%),
+    radial-gradient(2px 2px at 72% 85%, rgba(255, 140, 100, 0.55), transparent 70%),
+    radial-gradient(3px 3px at 88% 92%, rgba(255, 110, 80, 0.65), transparent 70%);
+  animation: kage-embers 26s linear infinite;
+}
+@keyframes kage-embers {
+  0% { transform: translate3d(0, 0, 0); opacity: 0.25; }
+  25% { opacity: 0.55; }
+  50% { transform: translate3d(1.5vw, -45vh, 0); opacity: 0.4; }
+  75% { opacity: 0.55; }
+  100% { transform: translate3d(-1vw, -95vh, 0); opacity: 0.15; }
+}
+
+/* keep app content above the ambient layer */
+html.theme-kage #root { position: relative; z-index: 1; }
+
+/* subtle depth-lift on cards, Kage-style ink shadow with a vermilion edge */
+html.theme-kage .card {
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+html.theme-kage.dark .card:hover {
+  box-shadow:
+    rgba(255, 74, 56, 0.25) 0 0 0 1px,
+    rgba(0, 0, 0, 0.45) 0 2px 2px,
+    rgba(224, 35, 28, 0.08) 0 10px 24px -12px;
+  transform: translateY(-1px);
+}
+
+/* lantern pulse on the primary button — like a breathing tōrō */
+html.theme-kage .btn-primary {
+  animation: kage-lantern 4.5s ease-in-out infinite;
+}
+@keyframes kage-lantern {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(224, 35, 28, 0.35); }
+  50% { box-shadow: 0 0 18px 2px rgba(224, 35, 28, 0.45); }
+}
+
+/* progress bars glow like embers in Kage dark */
+html.theme-kage.dark .progress-fill {
+  box-shadow: 0 0 10px rgba(224, 35, 28, 0.55);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.theme-kage body::before,
+  html.theme-kage body::after,
+  html.theme-kage .btn-primary {
+    animation: none !important;
+  }
+  html.theme-kage .card { transition: none !important; transform: none !important; }
 }

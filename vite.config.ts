@@ -14,10 +14,13 @@ export default defineConfig({
         name: 'LifeOS — Personal Productivity',
         short_name: 'LifeOS',
         description: 'Tasks, projects, goals, notes, weekly planner, calendar, focus and stats — synced across your devices.',
-        theme_color: '#4f46e5',
-        background_color: '#0f172a',
+        theme_color: '#08090b',
+        background_color: '#0f1115',
         display: 'standalone',
-        start_url: '/',
+        // "/" is now the public marketing homepage; the installed app boots
+        // into the product itself at /app.
+        start_url: '/app',
+        scope: '/',
         icons: [
           { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },

@@ -15,10 +15,10 @@ export const SITE = {
   linkedin: 'https://www.linkedin.com/in/kratim-singh-567954382/',
   location: 'Uttar Pradesh, India',
   status: 'Beta' as const,
-  /** App route users land on after "Open LifeOS". */
+  /** App route users land on after "Open LifeOS" (PWA start_url matches). */
   appPath: '/app',
-  /** Public marketing homepage path ("/" is the app itself for installed shells). */
-  homePath: '/home',
+  /** Public marketing homepage path (canonical "/"; /home is a legacy alias). */
+  homePath: '/',
 } as const;
 
 export const canonicalUrl = (path = '/') => {

@@ -11,12 +11,12 @@ const root = createRoot(document.getElementById('root')!);
 const path = window.location.pathname;
 const hash = window.location.hash;
 
-// The app itself: /app, the legacy root "/" (existing bookmarks, installed
-// PWAs, Android/Windows shells), and any .html asset page (#demo trials).
-// Everything else is the public marketing site (/, /about, /contact,
-// /privacy, /terms, and a 404 for unknown paths).
+// The PUBLIC site: "/" (marketing homepage), /home (legacy alias), /about,
+// /contact, /privacy, /terms, and a 404 for unknown paths.
+// The app itself: /app (and /app/*), plus .html asset pages and #demo trials.
+// Installed PWAs / Android & Windows shells point at /app — see the manifest
+// start_url and vercel.json rewrites.
 const isAppRoute =
-  path === '/' ||
   path === '/app' ||
   path.startsWith('/app/') ||
   path === '/index.html' ||
@@ -24,9 +24,7 @@ const isAppRoute =
   path.includes('.html') ||
   hash.includes('demo');
 
-const PUBLIC_PATHS = ['/home', '/about', '/contact', '/privacy', '/terms'];
-
-if (isAppRoute || !PUBLIC_PATHS.some((p) => path === p || path.startsWith(p + '/'))) {
+if (isAppRoute) {
   root.render(
     <AppProvider>
       <App />

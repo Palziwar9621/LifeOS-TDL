@@ -22,6 +22,12 @@ export function useSeo(opts: { title: string; description: string; path: string 
     set('meta[property="og:title"]', 'content', opts.title, () => {
       const m = document.createElement('meta'); m.setAttribute('property', 'og:title'); return m;
     });
+    set('meta[property="og:image"]', 'content', '/og.png', () => {
+      const m = document.createElement('meta'); m.setAttribute('property', 'og:image'); return m;
+    });
+    set('meta[name="twitter:image"]', 'content', '/og.png', () => {
+      const m = document.createElement('meta'); m.setAttribute('name', 'twitter:image'); return m;
+    });
     set('meta[property="og:description"]', 'content', opts.description, () => {
       const m = document.createElement('meta'); m.setAttribute('property', 'og:description'); return m;
     });
@@ -50,8 +56,8 @@ export function SiteChrome({ children }: { children: React.ReactNode }) {
 function SiteHeader() {
   return (
     <header className="site-header">
-      <a className="brand" href="/home" aria-label="LifeOS home">
-        <Logo size={26} />
+      <a className="brand" href="/" aria-label="LifeOS home">
+        <Logo size={26} light />
       </a>
       <nav className="site-nav" aria-label="Site">
         <a className="nav-extra" href="/about">About</a>
@@ -71,7 +77,7 @@ function SiteFooter() {
         <div>
           <h3>Product</h3>
           <ul>
-            <li><a href="/home">Home</a></li>
+            <li><a href="/">Home</a></li>
             <li><a href="/faq">FAQ</a></li>
             <li><a href="/download.html">Download</a></li>
             <li><a href={SITE.appPath}>Open the app</a></li>

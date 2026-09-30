@@ -118,9 +118,9 @@ export function HomePage() {
               Create, edit and complete without a network. Changes queue locally and sync when
               you reconnect — the sync badge always tells the truth.
             </Feature>
-            <Feature emoji="🌙" title="Themes & dark mode">
-              Zen Paper, Deep Focus, Soft Nordic and Obsidian &amp; Champagne, plus light, dark
-              and system modes.
+            <Feature emoji="🌙" title="Kage theme & dark mode">
+              The Kage theme — ink-black surfaces with a breathing vermilion glow and drifting
+              embers — plus Obsidian &amp; Champagne, and light, dark and system modes.
             </Feature>
             <Feature emoji="📲" title="Cross-platform">
               Installable PWA, Android app with native alarms, and a Windows desktop app that
@@ -212,8 +212,8 @@ export function HomePage() {
               data from Settings → Security → Delete Account.
             </Faq>
             <Faq q="What themes are available?">
-              Light, dark and system modes, plus four premium themes: Zen Paper, Deep Focus, Soft
-              Nordic and Obsidian &amp; Champagne.
+              Light, dark and system modes, plus premium themes: Kage (ink black with a
+              vermilion glow, inspired by our landing page) and Obsidian &amp; Champagne.
             </Faq>
           </div>
         </Section>

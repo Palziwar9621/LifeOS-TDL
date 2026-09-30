@@ -101,9 +101,7 @@ function AccountSection({ profile, toast }: any) {
 
 function AppearanceSection({ theme, setTheme, premiumTheme, setPremiumTheme }: any) {
   const THEMES: { key: string; name: string; desc: string; bg: string; fg: string; accent: string; dark: boolean }[] = [
-    { key: 'zen', name: 'Zen Paper', desc: 'Calm ivory · terracotta', bg: '#F8F9FA', fg: '#1E2022', accent: '#D37055', dark: false },
-    { key: 'focus', name: 'Deep Focus', desc: 'Deep slate · indigo', bg: '#0F1115', fg: '#E6EAF0', accent: '#6366F1', dark: true },
-    { key: 'nordic', name: 'Soft Nordic', desc: 'Ice gray · sage green', bg: '#F3F5F7', fg: '#111827', accent: '#10B981', dark: false },
+    { key: 'kage', name: 'Kage 影', desc: 'Ink black · vermilion · ambient glow', bg: '#0a0908', fg: '#efece4', accent: '#e0231c', dark: true },
     { key: 'noir', name: 'Obsidian & Champagne', desc: 'Velvet black · gold', bg: '#101013', fg: '#E9E9EC', accent: '#C9A96A', dark: true },
   ];
 
@@ -148,7 +146,7 @@ function AppearanceSection({ theme, setTheme, premiumTheme, setPremiumTheme }: a
           </button>
         ))}
       </div>
-      <p className="mt-3 text-xs muted">Dark themes (Deep Focus, Obsidian & Champagne) work best with Mode set to Dark. Your choice is remembered on this device.</p>
+      <p className="mt-3 text-xs muted">Kage pairs beautifully with Mode set to Dark — ink surfaces, a breathing vermilion glow and drifting embers. Your choice is remembered on this device.</p>
     </section>
   );
 }

@@ -20,11 +20,12 @@ export type ToastKind = 'info' | 'success' | 'error';
 
 export interface Toast { id: number; msg: string; kind: ToastKind; }
 
-export type PremiumTheme = 'zen' | 'focus' | 'nordic' | 'noir';
+export type PremiumTheme = 'kage' | 'noir';
 
 export function applyPremiumTheme(root: HTMLElement, t: PremiumTheme | null): void {
-  // 'theme-editorial' is legacy — kept so users upgrading from old versions shed the stale class.
-  for (const c of ['theme-zen', 'theme-focus', 'theme-nordic', 'theme-noir', 'theme-editorial']) root.classList.remove(c);
+  // 'theme-zen', 'theme-focus', 'theme-nordic' and 'theme-editorial' are
+  // retired — classes are still scrubbed so upgrading users shed stale ones.
+  for (const c of ['theme-kage', 'theme-zen', 'theme-focus', 'theme-nordic', 'theme-noir', 'theme-editorial']) root.classList.remove(c);
   if (t) root.classList.add(`theme-${t}`);
 }
 
