@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#08090b" />
+    <title>404 — Page not found · LifeOS</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap" rel="stylesheet" />
+    <style>
+      :root { --ink:#08090b; --bone:#dfe7e0; --dim:#aab4ad; --accent:#e0231c; --accent-soft:#ff5a3c; }
+      * { margin:0; padding:0; box-sizing:border-box; }
+      body {
+        min-height:100vh; display:flex; align-items:center; justify-content:center;
+        background:var(--ink); color:var(--bone);
+        font-family:'Geist',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+        text-align:center; padding:24px;
+      }
+      .card { max-width:460px; }
+      .kanji { font-size:clamp(96px,20vw,160px); line-height:1; color:rgba(224,35,28,0.18); user-select:none; }
+      h1 { font-size:clamp(2rem,6vw,3rem); letter-spacing:-0.02em; margin:8px 0 10px; }
+      p { color:var(--dim); line-height:1.6; margin-bottom:28px; }
+      .row { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
+      .btn {
+        display:inline-flex; align-items:center; gap:8px; text-decoration:none;
+        background:var(--accent); color:#fff; font-weight:600; font-size:0.95rem;
+        padding:11px 22px; border-radius:999px; transition:background .15s, transform .2s;
+      }
+      .btn:hover { background:var(--accent-soft); transform:translateY(-1px); }
+      .btn.ghost { background:transparent; color:var(--bone); box-shadow:inset 0 0 0 1px rgba(223,231,224,0.18); }
+      .btn.ghost:hover { background:rgba(223,231,224,0.08); }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <div class="kanji" aria-hidden="true">影</div>
+      <h1>404</h1>
+      <p>That page doesn't exist or has moved.<br />Like a shadow, it slips away.</p>
+      <div class="row">
+        <a class="btn" href="/">Go home</a>
+        <a class="btn ghost" href="/app">Open LifeOS</a>
+      </div>
+    </main>
+  </body>
+</html>
