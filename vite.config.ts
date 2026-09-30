@@ -26,6 +26,9 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        // The Kage landing-page assets (~3.4MB, marketing-only) stay out of
+        // the offline precache — the app shell precache stays lean.
+        globIgnores: ['landing-pages/**', 'web-app-manifest-*'],
         navigateFallback: '/index.html',
         importScripts: ['/sw-custom.js'],
         runtimeCaching: [

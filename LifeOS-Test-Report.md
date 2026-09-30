@@ -195,3 +195,32 @@ All 🔴 and 🟠 items are fixed and verified end-to-end on the live site with 
 - Logo component: solid black tile (was indigo gradient) matching favicon; used in Auth (2x) and Shell (sidebar + header).
 - Commit 3ef6b4b pushed; live assets verified 200 with new bytes.
 - Note: Android APK launcher icon still shows old art until an APK rebuild (v21).
+
+## Guest mode + account migration — E2E 2026-09-30
+
+**Bugs found & fixed during this pass:**
+1. `resetStore()` left the outbox alive → stale guest ops could flush into another account. Fixed: `idbDel('outbox')`.
+2. `initStore` ran twice concurrently for guest (explicit call + session effect) → spinner-lock. Fixed: `initPromise`/`lastInitUid` dedupe guard.
+3. Guest network guard was snapshotted at module load → first guest session still fired `pull()`/`flush()` (hung on unreachable endpoint, spinner). Fixed: `guestLocal()` re-read per call in pull/flush/realtime guards; dismissals sync blocked for guests.
+4. **Guest sign-out wiped guest rows** (`resetStore` → `idbWipeUser(guest:<id>:)`) — contradicted "data stays on this device". Fixed: `resetStore({ wipeCache })`, guest sign-out keeps cache.
+5. Migration race: ran before store init for the new account → `currentUserId()` null → bailed. Fixed: bounded wait for store uid.
+
+**E2E verified in preview browser (vite preview :4319):**
+- Fresh profile → auth screen → "Continue as Guest" → dashboard boots instantly (no spinner).
+- Guest task "Guest migration test task tomorrow 9am" via Quick Add → parsed (due 2026-10-01), visible on dashboard/calendar, persisted in IndexedDB under `guest:<id>:tasks`.
+- Zero Supabase network calls during the guest session (guest-local isolation verified).
+- Settings → Security → Sign out → guest flag cleared, guest id + cached rows survive.
+- Sign in as test account → migration fired (migrateGuest chunk imported, inserts flushed) → toast path OK.
+- REST verification: account tasks went 1 → 2; migrated row has title + due_date 2026-10-01 intact. Test row cleaned up after (account back to baseline "Buy groceries").
+- tsc + build pass after all fixes.
+
+## Account deletion — E2E (curl) 2026-09-30
+
+- Edge fn `delete-account` deployed. Throwaway user created via admin API → 1 task inserted (201) → function called with user JWT → `{ok:true, deleted:{profiles:1, tasks:1, ...}}`.
+- Post-delete: login → `invalid_credentials`; rows gone; other users' rows untouched; repeat call idempotent (404 = success).
+- Settings → Security UI verified rendering: type-DELETE confirm + ConfirmDialog + honest error states.
+
+## Public site — verified in browser
+
+- `/home` renders Kage iframe (`data-state="ready"`, WebGL OK), correct title/canonical/JSON-LD, H1, 7 sections, 8 FAQ `<details>`.
+- `/about`, `/contact`, `/privacy`, `/terms`, 404 built (same chrome/SEO hook). robots.txt, sitemap.xml, vercel.json rewrites + security headers shipped; live URL re-verification happens right after the push.

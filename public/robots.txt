@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /app
+Disallow: /app/
+Disallow: /manifest.webmanifest
+Disallow: /sw.js
+Disallow: /registerSW.js
+Disallow: /landing-pages/
+
+Sitemap: https://life-os-tdl.vercel.app/sitemap.xml

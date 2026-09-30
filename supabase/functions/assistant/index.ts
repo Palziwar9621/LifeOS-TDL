@@ -135,12 +135,24 @@ Deno.serve(async (req) => {
 
     const { spoken, ctx } = await req.json();
     if (!spoken || typeof spoken !== 'string') return new Response(JSON.stringify({ error: 'No spoken text' }), { status: 400, headers: cors });
+    if (spoken.length > 500) return new Response(JSON.stringify({ error: 'Command too long' }), { status: 400, headers: cors });
+    // Context minimization: cap each list so an oversized/compromised client
+    // can't balloon the prompt (defense-in-depth alongside client trimming).
+    const safeCtx: Record<string, unknown> = {};
+    if (ctx && typeof ctx === 'object') {
+      for (const [k, v] of Object.entries(ctx)) {
+        if (Array.isArray(v)) safeCtx[k] = v.slice(0, 20);
+        else if (typeof v === 'string' && v.length <= 200) safeCtx[k] = v;
+        else if (typeof v === 'number' || typeof v === 'boolean') safeCtx[k] = v;
+        // objects/unknown types dropped (pageParams etc.)
+      }
+    }
 
     const groqKey = Deno.env.get('GROQ_API_KEY');
     if (!groqKey) return new Response(JSON.stringify({ error: 'AI not configured (GROQ_API_KEY missing)' }), { status: 500, headers: cors });
 
     const messages = [
-      { role: 'system', content: SYSTEM_PROMPT + '\n\nCONTEXT: ' + JSON.stringify(ctx ?? {}) },
+      { role: 'system', content: SYSTEM_PROMPT + '\n\nCONTEXT: ' + JSON.stringify(safeCtx) },
       { role: 'user', content: spoken },
     ];
 

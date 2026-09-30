@@ -138,20 +138,24 @@ export function stopListening(): void {
 export function isListening(): boolean { return wantListening; }
 
 // --- Context for the brain ---
+// Privacy: only the minimum fields the model needs to resolve a command.
+// Names only — no ids beyond project names, no notes content, no descriptions,
+// no email. recentTaskTitles is capped at 10 so open-ended browsing history
+// is never shipped to the AI provider.
 export function buildAppContext(page: string, pageParams: Record<string, string>): AppContext {
   const s = dbState();
   const now = new Date();
   return {
     page,
-    pageParams,
+    pageParams: {}, // page params can embed task ids — not needed by the model
     today: todayStr(),
     weekday: now.toLocaleDateString(undefined, { weekday: 'long' }),
     time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
-    projects: s.projects.filter((p) => !p.archived).map((p) => ({ id: p.id, name: p.name })),
-    categories: s.categories.map((c) => ({ id: c.id, name: c.name })),
-    recentTaskTitles: s.tasks.filter((t) => !t.deleted && !t.archived).slice(-15).map((t) => t.title),
+    projects: s.projects.filter((p) => !p.archived).slice(0, 20).map((p) => ({ id: p.name, name: p.name })),
+    categories: s.categories.slice(0, 20).map((c) => ({ id: c.name, name: c.name })),
+    recentTaskTitles: s.tasks.filter((t) => !t.deleted && !t.archived).slice(-10).map((t) => t.title),
     todayTaskCount: s.tasks.filter((t) => !t.deleted && t.due_date === todayStr() && t.status !== 'completed').length,
-    routines: (s.routine_tasks ?? []).filter((r) => !r.archived).map((r) => r.title),
+    routines: (s.routine_tasks ?? []).filter((r) => !r.archived).slice(0, 15).map((r) => r.title),
   };
 }
 

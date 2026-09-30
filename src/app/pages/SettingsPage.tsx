@@ -14,6 +14,7 @@ import { updateUserPassword } from '../../lib/auth';
 import { getClient, loadSupabaseConfig } from '../../lib/supabase';
 import { createTask } from '../../lib/db';
 import { getAssistantSettings, saveAssistantSettings, speechSupported } from '../../lib/voice';
+import { deleteAccountRemote, purgeLocalData } from '../../lib/deleteAccount';
 
 type Section = 'account' | 'appearance' | 'notifications' | 'assistant' | 'categories' | 'tags' | 'sync' | 'data' | 'security' | 'about';
 
@@ -582,6 +583,32 @@ function SecuritySection({ onSignOut }: any) {
   const [pw2, setPw2] = useState('');
   const { toast } = useApp();
   const { confirm, confirmEl } = useConfirm();
+  const [deleteText, setDeleteText] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const { session, signOut } = useApp();
+
+  const deleteConfirmed = deleteText.trim().toUpperCase() === 'DELETE';
+
+  const runDeletion = async () => {
+    setDeleting(true);
+    const uid = session?.user?.id;
+    const r = await deleteAccountRemote();
+    if (!r.ok) {
+      setDeleting(false);
+      toast(r.error ?? 'Account deletion failed — nothing was deleted. Try again.', 'error');
+      return;
+    }
+    // Server confirmed. Now clear every local trace (cache, outbox, settings).
+    if (uid) await purgeLocalData(uid);
+    try {
+      const sb = getClient();
+      if (sb) await sb.auth.signOut();
+    } catch { /* session already revoked server-side */ }
+    setDeleting(false);
+    toast('Your account and its data have been deleted.', 'success');
+    // Reload to a clean state (no cached data, no session).
+    setTimeout(() => window.location.replace('/'), 1200);
+  };
 
   return (
     <section className="card p-5">
@@ -606,6 +633,39 @@ function SecuritySection({ onSignOut }: any) {
         <button className="btn-danger" onClick={() => confirm('Sign out?', 'You can sign back in anytime — data is safe on the server.', () => void onSignOut(), { confirmLabel: 'Sign out', danger: false })}>
           <Icon name="logout" className="h-4 w-4" /> Sign out
         </button>
+
+        <div className="divider my-3" />
+        <div className="rounded-2xl ring-1 ring-rose-500/30 bg-rose-500/5 p-4">
+          <p className="text-sm font-bold text-rose-600 dark:text-rose-300">Delete account</p>
+          <p className="mt-1 text-xs muted">
+            Permanently deletes your account, and all your tasks, notes, ideas, reminders,
+            routines, goals, projects, focus history and settings from the server — and clears
+            this device's local cache. <b>This cannot be undone.</b> Export your data first
+            (Backup &amp; Export) if you might want it later.
+          </p>
+          <label className="label mt-3">Type DELETE to confirm</label>
+          <input
+            className="input"
+            value={deleteText}
+            onChange={(e) => setDeleteText(e.target.value)}
+            placeholder="DELETE"
+            aria-label="Type DELETE to confirm account deletion"
+            autoComplete="off"
+          />
+          <button
+            className="btn-danger mt-3"
+            disabled={!deleteConfirmed || deleting}
+            onClick={() => confirm(
+              'Delete your account permanently?',
+              'Everything you created in LifeOS will be erased from the server and this device. This cannot be undone.',
+              () => void runDeletion(),
+              { confirmLabel: 'Delete forever' },
+            )}
+          >
+            {deleting ? 'Deleting…' : 'Delete my account'}
+          </button>
+          {deleting && <p className="mt-2 text-xs muted">Deleting server data — keep this page open until you see the confirmation.</p>}
+        </div>
       </div>
       {confirmEl}
     </section>

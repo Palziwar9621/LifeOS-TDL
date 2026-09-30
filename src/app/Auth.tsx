@@ -69,7 +69,7 @@ export function SetupScreen({ onConfigured }: { onConfigured: () => void }) {
 
 
 export function AuthScreen() {
-  const { toast } = useApp();
+  const { toast, continueAsGuest, migrateGuestIntoAccount } = useApp();
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -82,9 +82,28 @@ export function AuthScreen() {
     e?.preventDefault();
     setErr(''); setInfo(''); setBusy(true);
     try {
+      const wasGuest = !!localStorage.getItem('lifeos.guest.id');
+      // Snapshot guest data BEFORE auth: signing in resets the local store.
+      // collectGuestSnapshot covers both mounted-guest and signed-out-guest
+      // (IndexedDB cache) states, so a guest who left and returns still migrates.
+      let guestSnap: Record<string, any[]> | undefined;
+      if (wasGuest) {
+        const { collectGuestSnapshot, snapshotGuest } = await import('../lib/guest');
+        guestSnap = await collectGuestSnapshot();
+        await snapshotGuest(guestSnap); // durable backup survives the auth round-trip
+      }
       if (mode === 'login') {
         const r = await signIn(email, password);
         if (!r.ok) throw new Error(r.error ?? 'Sign in failed');
+        // Signed in while holding guest data: migrate it into the account.
+        if (wasGuest) {
+          const m = await migrateGuestIntoAccount(guestSnap);
+          if (m.ok && m.message !== 'Nothing to migrate — guest data was empty.') {
+            toast(m.message, 'success');
+          } else if (!m.ok) {
+            toast(m.message, 'error');
+          }
+        }
       } else if (mode === 'signup') {
         const r = await signUp(email, password, username);
         if (!r.ok) throw new Error(r.error ?? 'Sign up failed');
@@ -92,6 +111,15 @@ export function AuthScreen() {
           setInfo('Account created! We sent a confirmation link to your email — open it, then sign in here. Didn\'t get it? Use "Forgot password" to re-send.');
           setMode('login');
           return;
+        }
+        // Instant-session signup while holding guest data: migrate it now.
+        if (wasGuest) {
+          const m = await migrateGuestIntoAccount(guestSnap);
+          if (m.ok && m.message !== 'Nothing to migrate — guest data was empty.') {
+            toast(m.message, 'success');
+          } else if (!m.ok) {
+            toast(m.message, 'error');
+          }
         }
       } else {
         const r = await sendPasswordReset(email);
@@ -151,6 +179,16 @@ export function AuthScreen() {
           <button className="text-brand-600 dark:text-brand-300 font-semibold" onClick={() => setMode('login')}>← Back to sign in</button>
         )}
       </div>
+
+      <div className="divider my-5" />
+      <button className="btn-secondary w-full" onClick={() => { continueAsGuest(); toast('Guest mode — your data stays on this device only', 'info'); }}>
+        Continue as Guest
+      </button>
+      <p className="mt-2 text-xs muted text-left">
+        Guest mode works offline on this device only. Data isn't synced or backed up — clearing
+        browser/app data or uninstalling removes it. You can create an account later and your
+        guest data will be migrated.
+      </p>
     </AuthLayout>
   );
 }

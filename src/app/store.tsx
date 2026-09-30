@@ -4,6 +4,8 @@ import type { Session } from '@supabase/supabase-js';
 import { getClient, loadSupabaseConfig, hasSupabase } from '../lib/supabase';
 import { getSession, onAuthChange, signOut as authSignOut } from '../lib/auth';
 import { initStore, resetStore, setToastFn, flush, pull, getOutboxCount, getOnline, subscribeDb, currentUserId, getDbVersion } from '../lib/db';
+import { isGuest, startGuest, exitGuest, guestId, snapshotGuest, clearGuestBackup } from '../lib/guest';
+import { dbState } from '../lib/db';
 import { startReminderScheduler } from '../lib/notifications';
 import { initScrollReporting } from '../lib/scrollReport';
 
@@ -39,6 +41,8 @@ interface AppContextShape {
   pageParams: Record<string, string>;
   toast: (msg: string, kind?: ToastKind) => void;
   signOut: () => Promise<void>;
+  continueAsGuest: () => void;
+  migrateGuestIntoAccount: (preSnap?: Record<string, any[]>) => Promise<{ ok: boolean; message: string }>;
   syncNow: () => Promise<void>;
   online: boolean;
   pendingOps: number;
@@ -58,10 +62,14 @@ export function isDemoMode(): boolean {
   return typeof window !== 'undefined' && window.location.hash === '#demo';
 }
 
+/** Guest mode flag exposed through context (stable across renders). */
+let guestActive = false;
+export function isGuestMode(): boolean { return guestActive; }
+
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [configured, setConfigured] = useState<boolean>(() => hasSupabase() || isDemoMode());
+  const [configured, setConfigured] = useState<boolean>(() => hasSupabase() || isDemoMode() || isGuest());
   const [theme, setThemeState] = useState<'light' | 'dark' | 'system'>(
     () => (localStorage.getItem('lifeos.theme') as any) ?? 'system'
   );
@@ -93,10 +101,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     // Demo mode: skip Supabase entirely, run fully local
     if (isDemoMode()) {
+      guestActive = false;
       setAuthLoading(true);
       initStore('demo-user')
         .then(() => {
           if (!cancelled) { setSession({ user: { id: 'demo-user', email: 'demo@lifeos.local' } } as any); setAuthLoading(false); }
+        })
+        .catch(() => { if (!cancelled) setAuthLoading(false); });
+      return () => { cancelled = true; };
+    }
+    // Guest mode: local-only session, no server contact at all.
+    if (isGuest()) {
+      guestActive = true;
+      setAuthLoading(true);
+      const gid = startGuest().id;
+      initStore(gid)
+        .then(() => {
+          if (!cancelled) {
+            setSession({ user: { id: gid, email: null } } as any);
+            setAuthLoading(false);
+          }
         })
         .catch(() => { if (!cancelled) setAuthLoading(false); });
       return () => { cancelled = true; };
@@ -191,10 +215,68 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    // Leaving guest mode intentionally KEEPS the guest identity + local rows
+    // so the user can return or migrate later — clearing happens only on
+    // explicit deletion of guest data.
+    const wasGuest = guestActive;
+    if (wasGuest) {
+      guestActive = false;
+      exitGuest(); // keeps guest:<id> cache for return; never uploads anything
+    }
     await authSignOut();
-    await resetStore();
+    // Guest rows live only in this browser — never wipe them on sign-out.
+    await resetStore({ wipeCache: !wasGuest });
     setSession(null);
     setPage('home');
+  }, []);
+
+  /** Enter guest mode from the auth screen (mounts a local-only session). */
+  const continueAsGuest = useCallback(() => {
+    startGuest();
+    guestActive = true;
+    const gid = guestId();
+    setAuthLoading(true);
+    initStore(gid)
+      .then(() => {
+        setSession({ user: { id: gid, email: null } } as any);
+        setAuthLoading(false);
+      })
+      .catch(() => setAuthLoading(false));
+  }, []);
+
+  /** Copy a guest snapshot into the just-signed-in account, then clean up.
+   * The snapshot MUST be captured before sign-in (sign-in resets the store),
+   * so callers pass it in — or we recover it from the IndexedDB backup that
+   * snapshotGuest wrote before the auth round-trip. */
+  const migrateGuestIntoAccount = useCallback(async (preSnap?: Record<string, any[]>): Promise<{ ok: boolean; message: string }> => {
+    const { getGuestBackup, snapshotGuest, clearGuestBackup, collectGuestSnapshot } = await import('../lib/guest');
+    const { migrateGuestData } = await import('../lib/migrateGuest');
+    // Prefer the caller's pre-auth snapshot; otherwise gather from the live
+    // store, the guest's IndexedDB cache, or the durable backup — in that order.
+    const snap = preSnap ?? (await collectGuestSnapshot());
+    // The store may not be initialized for the new account yet (the session
+    // effect runs initStore after React re-renders, while we're a microtask
+    // right behind signIn()). Wait briefly so inserts land under the right uid;
+    // without this the migration bails with "Not signed in".
+    const waitStart = Date.now();
+    while (!currentUserId() && Date.now() - waitStart < 5000) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    if (!snap || !Object.values(snap).some((rows: any) => rows?.length > 0)) {
+      guestActive = false;
+      exitGuest();
+      return { ok: true, message: 'Nothing to migrate — guest data was empty.' };
+    }
+    await snapshotGuest(snap); // persist backup before touching the account
+    const report = await migrateGuestData(snap);
+    if (!report.ok) {
+      return { ok: false, message: report.error ?? 'Migration failed — your guest data is preserved on this device and will migrate next time.' };
+    }
+    await clearGuestBackup();
+    guestActive = false;
+    exitGuest();
+    const total = Object.values(report.copied).reduce((a, b) => a + b, 0);
+    return { ok: true, message: `Migrated ${total} item${total === 1 ? '' : 's'} to your account.` };
   }, []);
 
   const syncNow = useCallback(async () => {
@@ -205,8 +287,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<AppContextShape>(() => ({
     session, authLoading, configured: configured || isDemoMode(), theme, setTheme, premiumTheme, setPremiumTheme, page, navigate, pageParams,
-    toast, signOut, syncNow, online, pendingOps, version,
-  }), [session, authLoading, configured, theme, setTheme, premiumTheme, setPremiumTheme, page, navigate, pageParams, toast, signOut, syncNow, online, pendingOps, version]);
+    toast, signOut, continueAsGuest, migrateGuestIntoAccount, syncNow, online, pendingOps, version,
+  }), [session, authLoading, configured, theme, setTheme, premiumTheme, setPremiumTheme, page, navigate, pageParams, toast, signOut, continueAsGuest, migrateGuestIntoAccount, syncNow, online, pendingOps, version]);
 
   return (
     <AppContext.Provider value={value}>

@@ -3,6 +3,7 @@
 // imports; db.ts pulls in a lot).
 import { getClient } from './supabase';
 import { currentUserId } from './db';
+import { isGuest } from './guest';
 
-export function getClientSafe() { return getClient(); }
+export function getClientSafe() { return isGuest() ? null : getClient(); }
 export function currentUserIdSafe() { return currentUserId(); }

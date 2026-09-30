@@ -7,13 +7,24 @@ import type {
   Profile, Project, ProjectMilestone, RememberItem, Reminder, RoutineTask,
   RoutineCompletion, ScheduleBlock, Subtask, Tag, Task, TaskStatus, Priority,
 } from './types';
-import { idbGet, idbSet, cacheKey, idbWipeUser } from './idb';
+import { idbGet, idbSet, idbDel, cacheKey, idbWipeUser } from './idb';
 import { getClient } from './supabase';
 import { loadOutbox, pushOp, markFlushed, bumpAttempt, retryAllDead, type OutboxOp } from './outbox';
 import { todayStr } from './dates';
 
 /** Demo mode (#demo): no Supabase, purely local — used for previews and trials. */
 export const DEMO = typeof window !== 'undefined' && window.location.hash === '#demo';
+// Guest mode is local-only by design: even when a Supabase client exists
+// (env config), the store must never contact the server for a guest uid.
+// Guarded here AND in dismissalsClient.ts (alarm paths) via isGuest().
+// MUST be re-read per call, not snapshotted at module load: on the
+// "Continue as Guest" click path the flag is written after this module
+// initializes, and a stale false would let pull()/flush() hit the network
+// (where they can hang, spinner-locking the boot).
+export function guestLocal(): boolean {
+  try { return typeof localStorage !== 'undefined' && localStorage.getItem('lifeos.guest') === '1'; }
+  catch { return false; }
+}
 
 type Row = { id: string; updated_at?: string | null; user_id?: string; [k: string]: any };
 type Table = EntityKind | 'user_settings' | 'profiles';
@@ -104,7 +115,20 @@ function reportSyncError(msg: string): void {
 // ------------------------------------------------------------------
 // Boot / teardown
 // ------------------------------------------------------------------
+let lastInitUid: string | null = null;
+let initPromise: Promise<void> | null = null;
+
 export async function initStore(userId: string): Promise<void> {
+  // Deduplicate: guest mode can trigger two boot paths (explicit init + the
+  // session effect) for the same uid. A second concurrent call would wipe
+  // shared state mid-init and leave the UI spinner-locked.
+  if (initPromise && lastInitUid === userId) return initPromise;
+  lastInitUid = userId;
+  initPromise = doInitStore(userId).finally(() => { initPromise = null; });
+  return initPromise;
+}
+
+async function doInitStore(userId: string): Promise<void> {
   uid = userId;
   state = emptyState();
   outbox = [];
@@ -132,8 +156,17 @@ export async function initStore(userId: string): Promise<void> {
   pullTimer = setInterval(() => { if (online) void flush(); }, 60000);
 }
 
-export async function resetStore() {
-  if (uid) await idbWipeUser(uid + ':');
+export async function resetStore(opts?: { wipeCache?: boolean }) {
+  const wipeCache = opts?.wipeCache ?? true;
+  // Guest sign-out must KEEP the guest's cached rows (guest:<id>:*) so the
+  // user can return later or migrate their data into an account — only the
+  // in-memory state and sync machinery are torn down. Account sign-outs wipe
+  // the cache as before (rows live on the server).
+  if (uid && wipeCache) await idbWipeUser(uid + ':');
+  // Drop queued operations too — they belong to the account that created
+  // them. Without this, pending ops from a guest (or account A) could be
+  // flushed into a different account after switching users.
+  await idbDel('outbox');
   if (realtimeChannel) {
     const sb = getClient();
     if (sb) sb.removeChannel(realtimeChannel);
@@ -165,7 +198,7 @@ function handleOffline() {
 // ------------------------------------------------------------------
 function subscribeRealtime() {
   const sb = getClient();
-  if (DEMO || !sb || !uid) return;
+  if (DEMO || guestLocal() || !sb || !uid) return;
   if (realtimeChannel) sb.removeChannel(realtimeChannel);
   const tables: Table[] = [
     'profiles', 'categories', 'tags', 'projects', 'project_milestones', 'goals',
@@ -264,7 +297,7 @@ async function persistAll() {
 // ------------------------------------------------------------------
 export async function pull(): Promise<void> {
   const sb = getClient();
-  if (DEMO || !sb || !uid || pulling) return;
+  if (DEMO || guestLocal() || !sb || !uid || pulling) return;
   pulling = true;
   let hadError = false;
   try {
@@ -334,7 +367,7 @@ function pullErrorMessage(e: any): string {
 // ------------------------------------------------------------------
 export async function flush(): Promise<void> {
   const sb = getClient();
-  if (DEMO || !sb || !uid || flushing || !online) return;
+  if (DEMO || guestLocal() || !sb || !uid || flushing || !online) return;
   flushing = true;
   try {
     const ops = await loadOutbox();
@@ -421,6 +454,13 @@ async function enqueue(op: Omit<OutboxOp, 'id' | 'seq' | 'attempts' | 'ts'>) {
 // ------------------------------------------------------------------
 // Generic CRUD
 // ------------------------------------------------------------------
+/** Insert a prebuilt row as-is (used by guest→account migration; bypasses
+ * createTask-style builders). Enqueues a normal outbox insert so the rows
+ * sync like any other. */
+export async function insertRowDirect<T extends Row>(table: Table, row: T): Promise<T> {
+  return insertRow(table, row);
+}
+
 async function insertRow<T extends Row>(table: Table, row: T): Promise<T> {
   (state as any)[table].push(row);
   await persistTable(table);
