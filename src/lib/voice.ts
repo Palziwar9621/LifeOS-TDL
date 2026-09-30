@@ -94,12 +94,25 @@ export function nativeTtsSpeak(text: string, onEnd?: () => void): boolean {
   installNativeSpeech();          // ensure callbacks exist before the engine calls back
   const n = nativeSpeech();
   if (!n || typeof n.speak !== 'function') return false;
+  let ended = false;
+  const finish = () => { if (ended) return; ended = true; onEnd?.(); };
+  // Watchdog: if the native engine never reports an end (missing TTS engine,
+  // stalled init, swallowed callback), unduck anyway so the mic is never
+  // stuck muted — a stuck mute made the assistant permanently deaf.
+  const watchdog = setTimeout(finish, 12_000);
   try {
-    (window as any).__lifeosSpeech.onSpeakEnd = (status: string) => { onEnd?.(); };
+    (window as any).__lifeosSpeech.onSpeakEnd = (status: string) => {
+      clearTimeout(watchdog);
+      finish();
+      if (status === 'unavailable') unavailableHandler?.();
+    };
     n.speak(text);
     return true;
-  } catch { return false;
-}
+  } catch {
+    clearTimeout(watchdog);
+    finish();
+    return false;
+  }
 }
 
 export function nativeTtsStop(): void {
@@ -121,14 +134,23 @@ function nativeError(code: string) {
   else onError?.('Speech error ' + code);
 }
 
+/** Called when the device reports it has no working TTS engine. */
+let unavailableHandler: (() => void) | null = null;
+export function setTtsUnavailableHandler(fn: (() => void) | null): void { unavailableHandler = fn; }
+
 export function installNativeSpeech(): void {
   const n = nativeSpeech();
   if (!n || typeof window === 'undefined') return;
+  // Preserve a pending onSpeakEnd: startListening() re-installs this object
+  // right after speak() armed it, and clobbering it used to leave the mic
+  // ducked forever (assistant went silent after the first reply).
+  const prev = (window as any).__lifeosSpeech;
   (window as any).__lifeosSpeech = {
     onSpeechResult: nativeResult,
     onSpeechPartial: nativePartial,
     onSpeechError: nativeError,
     onSpeechReady: () => { /* armed */ },
+    ...(prev?.onSpeakEnd ? { onSpeakEnd: prev.onSpeakEnd } : {}),
   };
 }
 

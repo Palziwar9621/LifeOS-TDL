@@ -18,7 +18,7 @@ import {
   speechSupported, startListening, stopListening, isListening,
   getAssistantSettings, extractWakeCommand, executeCommand,
   duckMicForSpeech, unduckMicAfterSpeech,
-  nativeTtsSpeak, nativeTtsStop, nativeTtsSupported,
+  nativeTtsSpeak, nativeTtsStop, nativeTtsSupported, setTtsUnavailableHandler,
   type AssistantSettings,
 } from '../lib/voice';
 
@@ -48,7 +48,7 @@ function pickVoice(): SpeechSynthesisVoice | null {
 }
 
 export function VoiceAssistant() {
-  const { page, pageParams, navigate } = useApp();
+  const { page, pageParams, navigate, toast } = useApp();
   const supported = speechSupported();
   const [settings, setSettings] = useState<AssistantSettings>(() => getAssistantSettings());
   const [listening, setListening] = useState(false);
@@ -129,6 +129,15 @@ export function VoiceAssistant() {
 
   // Cleanup on unmount
   useEffect(() => () => { stopListening(); }, []);
+
+  // If the Android shell reports no working TTS engine, say so loudly —
+  // silence here used to look like "the assistant stopped talking" with no clue why.
+  useEffect(() => {
+    setTtsUnavailableHandler(() => {
+      toast("Speech engine missing on this device — install a TTS engine (e.g. Google Speech Services) or replies can't be spoken.", 'error');
+    });
+    return () => setTtsUnavailableHandler(null);
+  }, [toast]);
 
   // Always-current transcript handler (stale-closure guard; see voice.ts).
   const transcriptRef = useRef(onTranscript);

@@ -131,7 +131,7 @@ function TaskMenu({ task, onDelete, onSnooze, onDuplicate, onPriority, onStatus,
       <button className="btn-ghost btn-sm" aria-label="More actions" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
         <Icon name="more" className="h-4 w-4" />
         {open && (
-          <div className="card absolute right-0 top-9 z-20 w-52 p-1.5 animate-fade-in" onClick={(e) => e.stopPropagation()}>
+          <div className="card absolute right-0 top-9 z-40 w-52 p-1.5 animate-fade-in" onClick={(e) => e.stopPropagation()}>
             <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider muted">Priority</div>
             {(['low', 'medium', 'high', 'urgent'] as Priority[]).map((p) => (
               <button key={p} className="nav-item w-full !py-1.5 text-xs" onClick={() => { onPriority(p); setOpen(false); }}>

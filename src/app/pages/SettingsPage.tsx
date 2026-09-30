@@ -195,6 +195,28 @@ function AssistantSection({ toast }: any) {
         <p className="text-sm muted">This browser/webview doesn't support speech recognition. The assistant works in Chrome, Edge, and the Android app on most devices.</p>
       ) : (
         <>
+          <div className="mb-4 flex items-center gap-2">
+            <button className="btn-secondary btn-sm" onClick={() => {
+              const n = (window as any).LifeOSSpeech;
+              if (n && typeof n.speak === 'function') {
+                // Native bridge (Android app): route through the same path the assistant uses.
+                (window as any).__lifeosSpeech = (window as any).__lifeosSpeech || {};
+                (window as any).__lifeosSpeech.onSpeakEnd = (st: string) => {
+                  if (st === 'unavailable') toast('Speech engine missing on this device — replies can\'t be spoken.', 'error');
+                  else toast('Speech engine works ✓', 'success');
+                };
+                n.speak('Voice test. If you can hear this, spoken replies are working.');
+              } else if (typeof speechSynthesis !== 'undefined') {
+                const u = new SpeechSynthesisUtterance('Voice test. If you can hear this, spoken replies are working.');
+                u.onend = () => toast('Speech engine works ✓', 'success');
+                u.onerror = () => toast('Speech synthesis failed in this browser', 'error');
+                speechSynthesis.speak(u);
+              } else {
+                toast('No speech engine available', 'error');
+              }
+            }}>🔊 Test voice output</button>
+          </div>
+
           <label className="mb-4 flex items-center justify-between gap-3">
             <span className="text-sm font-semibold">Voice assistant enabled</span>
             <input type="checkbox" className="checkbox-tap" checked={s.enabled} onChange={(e) => patch({ enabled: e.target.checked })} />
