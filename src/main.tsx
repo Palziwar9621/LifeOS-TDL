@@ -33,3 +33,15 @@ if (isAppRoute) {
 } else {
   root.render(<SiteApp />);
 }
+
+// Service-worker takeover: when a new SW purges caches and claims clients
+// (sw-custom.js activate), reload once so users are never stuck on a stale
+// bundle after a deploy. Guarded by sessionStorage so it can't loop.
+try {
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    if (e.data?.type === 'lifeos-sw-updated' && !sessionStorage.getItem('lifeos.swReloaded')) {
+      sessionStorage.setItem('lifeos.swReloaded', '1');
+      location.reload();
+    }
+  });
+} catch { /* no SW support */ }

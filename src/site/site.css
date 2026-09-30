@@ -53,10 +53,8 @@
 
 /* ---------- hero ---------- */
 .hero { position: relative; }
-.kage-frame { height: clamp(520px, 86vh, 900px); position: relative; }
-.kage-frame iframe, .kage-frame .threeui-background { width: 100%; height: 100%; }
-.kage-fallback { height: 100%; display: flex; align-items: center; justify-content: center; background: var(--s-ink); }
-.kage-fallback img { width: 100%; height: 100%; object-fit: cover; opacity: 0.9; }
+.hero-scene { position: relative; height: clamp(520px, 86vh, 900px); overflow: hidden; }
+.hero-scene canvas { width: 100%; height: 100%; display: block; }
 .hero-overlay {
   position: absolute; inset: auto 0 0 0; z-index: 10;
   display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 20px;
@@ -103,6 +101,52 @@
 .step { border-left: 2px solid var(--s-accent); padding: 4px 0 4px 16px; }
 .step b { display: block; margin-bottom: 4px; }
 .step span { color: var(--s-muted); font-size: 0.88rem; line-height: 1.5; }
+
+/* ---------- contact form ---------- */
+.contact-form {
+  max-width: 640px; margin: 26px 0 8px; padding: 26px;
+  background: var(--s-card); border: 1px solid var(--s-line); border-radius: 18px;
+}
+.contact-form .f-row { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; }
+@media (max-width: 560px) { .contact-form .f-row { grid-template-columns: 1fr; } }
+.f-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.f-field label { font-size: 0.82rem; font-weight: 600; color: var(--s-bone); letter-spacing: 0.02em; }
+.f-field input, .f-field textarea {
+  font: inherit; color: var(--s-bone); background: rgba(5,7,10,0.5);
+  border: 1px solid var(--s-line); border-radius: 10px; padding: 11px 14px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.f-field textarea { resize: vertical; min-height: 130px; }
+.f-field input:focus, .f-field textarea:focus {
+  outline: none; border-color: rgba(224, 35, 28, 0.65);
+  box-shadow: 0 0 0 3px rgba(224, 35, 28, 0.15);
+}
+.f-field input::placeholder, .f-field textarea::placeholder { color: var(--s-muted); }
+.f-field .hp { position: absolute; left: -9999px; opacity: 0; height: 0; width: 0; }
+.f-error {
+  color: var(--s-accent-soft); font-size: 0.9rem; margin: 4px 0 12px;
+  padding: 10px 14px; border: 1px solid rgba(224, 35, 28, 0.4); border-radius: 10px;
+  background: rgba(224, 35, 28, 0.07);
+}
+.f-foot { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-top: 6px; }
+.f-note { color: var(--s-muted); font-size: 0.82rem; }
+.contact-form .site-cta { border: none; cursor: pointer; font: inherit; font-weight: 600; }
+.contact-form .site-cta:disabled { opacity: 0.6; cursor: wait; }
+.form-done { text-align: center; padding: 40px 20px; }
+.form-done-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 56px; height: 56px; border-radius: 50%; margin-bottom: 14px;
+  background: rgba(224, 35, 28, 0.15); color: var(--s-accent-soft); font-size: 1.6rem;
+  border: 1px solid rgba(224, 35, 28, 0.4);
+}
+.form-done h2 { margin-bottom: 8px; }
+.form-done p { color: var(--s-bone-dim); max-width: 46ch; margin: 0 auto 20px; line-height: 1.6; }
+.btn-s-ghost {
+  font: inherit; font-weight: 600; color: var(--s-bone); background: transparent;
+  border: 1px solid var(--s-line); border-radius: 999px; padding: 10px 20px; cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-s-ghost:hover { background: rgba(223, 231, 224, 0.08); }
 
 /* ---------- FAQ ---------- */
 .faq { max-width: 760px; }

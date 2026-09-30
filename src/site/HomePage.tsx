@@ -1,7 +1,7 @@
-// LifeOS — public homepage. ThreeUI Kage (MIT) WebGL scene + crawlable LifeOS content.
-import React, { useEffect, useState } from 'react';
+// LifeOS — public homepage. Native animated night scene + crawlable LifeOS content.
+import React from 'react';
 import { SiteChrome, useSeo } from './SiteChrome';
-import { KageScene } from './KageScene';
+import { HeroScene } from './HeroScene';
 import { SITE } from '../lib/site';
 
 export function HomePage() {
@@ -11,15 +11,6 @@ export function HomePage() {
       'Organize tasks, plan your day, manage reminders, build routines and track productivity with LifeOS, your all-in-one personal productivity workspace.',
     path: '/home',
   });
-
-  const [reducedMotion, setReducedMotion] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    setReducedMotion(mq.matches);
-    const on = () => setReducedMotion(mq.matches);
-    mq.addEventListener('change', on);
-    return () => mq.removeEventListener('change', on);
-  }, []);
 
   return (
     <SiteChrome>
@@ -45,7 +36,9 @@ export function HomePage() {
       <main>
         {/* ---------------- HERO ---------------- */}
         <section className="hero" aria-label="Introduction">
-          <KageScene reducedMotion={reducedMotion} />
+          <div className="hero-scene" aria-hidden={false}>
+            <HeroScene />
+          </div>
           <div className="hero-overlay">
             <div>
               <h1>One calm place for your whole life</h1>

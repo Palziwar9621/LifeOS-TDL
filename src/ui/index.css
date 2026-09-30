@@ -99,27 +99,30 @@
         vermilion gate accent. Works in light mode as a paper-ink look and
         shines in dark mode as a true night-temple theme. */
   html.theme-kage {
-    --color-slate-50: #f6f5f2;
-    --color-slate-100: #ecebe6;
-    --color-slate-200: #e2e0da;
-    --color-slate-300: #ccc9c1;
-    --color-slate-400: #98948b;
-    --color-slate-500: #6e6a62;
-    --color-slate-600: #55524b;
-    --color-slate-700: #413e38;
-    --color-slate-800: #2c2a26;
-    --color-slate-900: #1c1b18;
-    --color-slate-950: #11100e;
-    --color-brand-50: #fdeeea;
-    --color-brand-100: #f8d9d2;
-    --color-brand-200: #f0b3a7;
-    --color-brand-300: #e68877;
-    --color-brand-400: #e05a44;
+    /* Light mode: warm washi-paper surfaces against true ink text —
+       higher contrast than the default theme, with a clearly
+       distinguishable vermilion (not pink-washed) accent scale. */
+    --color-slate-50: #faf8f4;
+    --color-slate-100: #f1eee7;
+    --color-slate-200: #e5e1d7;
+    --color-slate-300: #cdc7b9;
+    --color-slate-400: #8f887a;
+    --color-slate-500: #645d50;
+    --color-slate-600: #46413a;
+    --color-slate-700: #33302a;
+    --color-slate-800: #211f1b;
+    --color-slate-900: #171613;
+    --color-slate-950: #0d0c0a;
+    --color-brand-50: #fff1ec;
+    --color-brand-100: #ffdfd5;
+    --color-brand-200: #ffbfa8;
+    --color-brand-300: #ff9166;
+    --color-brand-400: #f4552f;
     --color-brand-500: #e0231c;
-    --color-brand-600: #c31f19;
-    --color-brand-700: #a11a15;
-    --color-brand-800: #7f150f;
-    --color-brand-900: #5c0f0b;
+    --color-brand-600: #c01a14;
+    --color-brand-700: #9c140f;
+    --color-brand-800: #770e0a;
+    --color-brand-900: #520806;
   }
 
   /* Kage dark mode — the full night-temple treatment: true ink surfaces,
@@ -307,8 +310,9 @@ html.theme-kage body::before {
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  /* lantern glow — a warm vermilion bloom that breathes */
+  /* torii hairline at the very top — the theme's signature mark */
   background:
+    linear-gradient(to bottom, rgba(224, 35, 28, 0.75) 0, rgba(224, 35, 28, 0.35) 2px, transparent 3px),
     radial-gradient(60vw 50vh at 85% -10%, rgba(224, 35, 28, 0.16), transparent 60%),
     radial-gradient(50vw 40vh at -10% 110%, rgba(224, 35, 28, 0.09), transparent 60%);
   animation: kage-breathe 9s ease-in-out infinite;
@@ -329,9 +333,37 @@ html.theme-kage.dark body::before {
    screen blending and pointer-events: none. */
 html.theme-kage #root { position: relative; z-index: 1; }
 
+/* Light-mode Kage identity: warm washi paper with a fiber-dot grid —
+   unmistakably not the default white/indigo look. */
+html.theme-kage:not(.dark) body {
+  background-color: #f5f0e6;
+  background-image: radial-gradient(rgba(70, 65, 58, 0.05) 1px, transparent 1.2px);
+  background-size: 22px 22px;
+}
+html.theme-kage:not(.dark) body::before {
+  background:
+    linear-gradient(to bottom, rgba(224, 35, 28, 0.8) 0, rgba(224, 35, 28, 0.4) 2px, transparent 3px),
+    radial-gradient(60vw 50vh at 85% -10%, rgba(224, 35, 28, 0.1), transparent 60%),
+    radial-gradient(50vw 40vh at -10% 110%, rgba(224, 35, 28, 0.06), transparent 60%);
+}
+
 /* subtle depth-lift on cards, Kage-style ink shadow with a vermilion edge */
 html.theme-kage .card {
   transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+/* Light mode: cards get a visible ink border + washi shadow so the theme
+   reads as something distinct from the default look. */
+html.theme-kage:not(.dark) .card {
+  box-shadow:
+    rgba(23, 22, 19, 0.14) 0 0 0 1px,
+    rgba(23, 22, 19, 0.06) 0 2px 4px;
+}
+html.theme-kage:not(.dark) .card:hover {
+  box-shadow:
+    rgba(224, 35, 28, 0.35) 0 0 0 1px,
+    rgba(23, 22, 19, 0.10) 0 2px 4px,
+    rgba(224, 35, 28, 0.10) 0 10px 24px -14px;
+  transform: translateY(-1px);
 }
 html.theme-kage.dark .card:hover {
   box-shadow:
@@ -350,10 +382,20 @@ html.theme-kage .btn-primary {
   50% { box-shadow: 0 0 18px 2px rgba(224, 35, 28, 0.45); }
 }
 
-/* progress bars glow like embers in Kage dark */
+/* progress bars glow like embers (dark); in light mode they're solid vermilion */
 html.theme-kage.dark .progress-fill {
   box-shadow: 0 0 10px rgba(224, 35, 28, 0.55);
 }
+html.theme-kage:not(.dark) .progress-fill {
+  background: var(--color-brand-600);
+}
+html.theme-kage:not(.dark) .nav-item-active {
+  background: var(--color-brand-600);
+}
+/* light-mode headings get the ink-brush treatment: near-black with a
+   vermilion kick on section titles' first letter is too gimmicky — instead,
+   the kicker/brand text picks up the true vermilion */
+html.theme-kage:not(.dark) .section-title { letter-spacing: -0.01em; }
 
 @media (prefers-reduced-motion: reduce) {
   html.theme-kage body::before,

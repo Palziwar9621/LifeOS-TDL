@@ -1,6 +1,6 @@
 // LifeOS — public info pages: About, Contact, Privacy, Terms, FAQ, 404.
 // All copy is checked against verified implementation (see AUDIT-REPORT).
-import React from 'react';
+import React, { useState } from 'react';
 import { SiteChrome, useSeo } from './SiteChrome';
 import { SITE } from '../lib/site';
 
@@ -69,6 +69,90 @@ export function AboutPage() {
 /* ------------------------------------------------------------------ */
 /* Contact                                                             */
 /* ------------------------------------------------------------------ */
+
+const FORMSPREE_ENDPOINT = 'https://formspree.io/f/mkjgyyjr';
+
+function ContactForm() {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [message, setMessage] = useState('');
+  const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [errorMsg, setErrorMsg] = useState('');
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (state === 'sending') return;
+    setState('sending'); setErrorMsg('');
+    try {
+      const res = await fetch(FORMSPREE_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ name, email, message, _subject: `LifeOS contact — ${name}` }),
+      });
+      if (res.ok) {
+        setState('sent');
+        setName(''); setEmail(''); setMessage('');
+      } else {
+        const data = await res.json().catch(() => null);
+        setErrorMsg(data?.errors?.[0]?.message ?? `Could not send (error ${res.status}). Please email ${SITE.email} directly.`);
+        setState('error');
+      }
+    } catch {
+      setErrorMsg(`Network problem — please try again or email ${SITE.email} directly.`);
+      setState('error');
+    }
+  };
+
+  if (state === 'sent') {
+    return (
+      <div className="form-done" role="status">
+        <span className="form-done-icon" aria-hidden="true">✓</span>
+        <h2>Message sent</h2>
+        <p>Thank you — it lands straight in the LifeOS inbox. You'll get a reply within one business day.</p>
+        <button className="btn-s-ghost" onClick={() => setState('idle')}>Send another message</button>
+      </div>
+    );
+  }
+
+  return (
+    <form className="contact-form" onSubmit={submit} noValidate={false}>
+      {/* honeypot — bots fill this, humans never see it */}
+      <input type="text" name="_gotcha" className="hp" tabIndex={-1} autoComplete="off" aria-hidden="true" />
+
+      <div className="f-row">
+        <div className="f-field">
+          <label htmlFor="cf-name">Name</label>
+          <input id="cf-name" name="name" type="text" required maxLength={100} autoComplete="name"
+            placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} disabled={state === 'sending'} />
+        </div>
+        <div className="f-field">
+          <label htmlFor="cf-email">Email</label>
+          <input id="cf-email" name="email" type="email" required maxLength={120} autoComplete="email"
+            placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} disabled={state === 'sending'} />
+        </div>
+      </div>
+
+      <div className="f-field">
+        <label htmlFor="cf-message">Message</label>
+        <textarea id="cf-message" name="message" required rows={6} maxLength={4000}
+          placeholder="Tell us what's on your mind — a bug, an idea, a question…"
+          value={message} onChange={(e) => setMessage(e.target.value)} disabled={state === 'sending'} />
+      </div>
+
+      {state === 'error' && (
+        <p className="f-error" role="alert">{errorMsg}</p>
+      )}
+
+      <div className="f-foot">
+        <span className="f-note">Goes straight to {SITE.email} — no newsletter, no spam.</span>
+        <button className="site-cta" type="submit" disabled={state === 'sending'}>
+          {state === 'sending' ? 'Sending…' : 'Send message'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export function ContactPage() {
   useSeo({
     title: 'Contact LifeOS — support, bugs and feedback',
@@ -83,11 +167,13 @@ export function ContactPage() {
         <span className="updated">We aim to respond within one business day</span>
 
         <p>
-          The fastest way to reach LifeOS is email:{' '}
-          <a href={`mailto:${SITE.email}`}>{SITE.email}</a>
+          The fastest way to reach LifeOS is the form below — it lands directly in the
+          LifeOS inbox ({SITE.email}).
         </p>
 
-        <h2>What to email about</h2>
+        <ContactForm />
+
+        <h2>What to write about</h2>
         <ul>
           <li><strong>Technical support</strong> — setup, sync, alarms or account trouble</li>
           <li><strong>Bug reports</strong> — tell us the platform (web, Android, Windows) and what happened</li>
