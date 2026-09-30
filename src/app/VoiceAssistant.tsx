@@ -60,11 +60,13 @@ export function VoiceAssistant() {
   const historyRef = useRef<{ role: 'user' | 'assistant'; content: string }[]>([]);
 
   // Speak WITHOUT captions. Ducks the mic while talking (anti-feedback), then
-  // hands the mic back after a short tail. On the Android shell there is no
-  // window.speechSynthesis — replies go through the native TTS bridge instead.
+  // hands the mic back after a short tail. The Android WebView EXPOSES
+  // window.speechSynthesis but it silently does nothing there — so when the
+  // native TTS bridge exists we always use it first; browsers never have the
+  // bridge and keep using Web Speech.
   const speak = useCallback((msg: string) => {
     duckMicForSpeech();
-    if (nativeTtsSupported() && typeof window !== 'undefined' && !window.speechSynthesis) {
+    if (nativeTtsSupported()) {
       const ok = nativeTtsSpeak(msg, () => unduckMicAfterSpeech());
       if (ok) return;
       // native path failed — fall through to web speech (and unduck there)
