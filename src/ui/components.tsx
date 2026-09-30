@@ -302,13 +302,11 @@ export function Spinner({ className = 'h-5 w-5' }: { className?: string }) {
 export function Logo({ size = 28, light = false }: { size?: number; light?: boolean }) {
   return (
     <span className="inline-flex items-center gap-2 select-none">
-      <span className="flex items-center justify-center rounded-xl bg-[#111214] ring-1 ring-white/15"
-        style={{ width: size, height: size }}>
-        {/* LIFE OS bolt logo — same art as the favicon, kept big on the tile */}
-        <svg viewBox="0 0 64 64" fill="none" style={{ width: size * 0.72, height: size * 0.72 }} aria-hidden="true">
-          <path d="M39.5 9.5 20.5 34.5h10.2L27 54.5l19-25H35.8z" fill="#fff" />
-        </svg>
-      </span>
+      {/* Exact favicon art (life-os-icon.svg): tilted ink square + white bolt. */}
+      <svg viewBox="0 0 64 64" fill="none" style={{ width: size, height: size }} aria-hidden="true">
+        <rect x="13" y="13" width="38" height="38" rx="8" fill="#111214" transform="rotate(-8 32 32)" />
+        <path d="M36.8 15.8 23.6 33.2h8.2l-2.7 15 13.3-18h-8.2z" fill="#fff" />
+      </svg>
       <span className={`text-lg font-extrabold tracking-tight ${light ? 'text-white' : 'text-slate-900 dark:text-white'}`}>LifeOS</span>
     </span>
   );

@@ -18,6 +18,7 @@ import {
   speechSupported, startListening, stopListening, isListening,
   getAssistantSettings, extractWakeCommand, executeCommand,
   duckMicForSpeech, unduckMicAfterSpeech,
+  nativeTtsSpeak, nativeTtsStop, nativeTtsSupported,
   type AssistantSettings,
 } from '../lib/voice';
 
@@ -59,9 +60,15 @@ export function VoiceAssistant() {
   const historyRef = useRef<{ role: 'user' | 'assistant'; content: string }[]>([]);
 
   // Speak WITHOUT captions. Ducks the mic while talking (anti-feedback), then
-  // hands the mic back after a short tail.
+  // hands the mic back after a short tail. On the Android shell there is no
+  // window.speechSynthesis — replies go through the native TTS bridge instead.
   const speak = useCallback((msg: string) => {
     duckMicForSpeech();
+    if (nativeTtsSupported() && typeof window !== 'undefined' && !window.speechSynthesis) {
+      const ok = nativeTtsSpeak(msg, () => unduckMicAfterSpeech());
+      if (ok) return;
+      // native path failed — fall through to web speech (and unduck there)
+    }
     try {
       window.speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(msg);

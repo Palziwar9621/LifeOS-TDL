@@ -84,6 +84,32 @@ export function unduckMicAfterSpeech(): void {
 
 function nativeResult(text: string) { if (muted) return; onHeard?.(text, true); }
 function nativePartial(text: string) { if (muted) return; onHeard?.(text, false); }
+
+// --- Native TTS (Android shell) ---
+// The Android WebView has no window.speechSynthesis, so spoken replies must go
+// through the LifeOSSpeech bridge (SpeechBridge.speak). We expose the same
+// duck/unduck contract so the anti-feedback mute still applies.
+export function nativeTtsSpeak(text: string, onEnd?: () => void): boolean {
+  const n = nativeSpeech();
+  if (!n || typeof n.speak !== 'function') return false;
+  try {
+    (window as any).__lifeosSpeech = (window as any).__lifeosSpeech ?? {};
+    (window as any).__lifeosSpeech.onSpeakEnd = (status: string) => { onEnd?.(); };
+    n.speak(text);
+    return true;
+  } catch { return false;
+}
+}
+
+export function nativeTtsStop(): void {
+  const n = nativeSpeech();
+  try { n?.stopSpeak?.(); } catch { /* ignore */ }
+}
+
+export function nativeTtsSupported(): boolean {
+  const n = nativeSpeech();
+  return !!(n && typeof n.speak === 'function');
+}
 function nativeError(code: string) {
   if (code === '6' || code === '7' || code === 'no_match' || code === '8' || code === 'busy') return;
   // ERROR_CLIENT (5) is transient on many devices — the Android side now
