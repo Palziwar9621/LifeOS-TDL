@@ -1,10 +1,13 @@
 // LifeOS — entry
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import './ui/index.css';
-import { AppProvider } from './app/store';
-import { App } from './app/App';
 import { SiteApp } from './site/SiteApp';
+
+// Route-level code splitting: the productivity app (store, db, sync, pages)
+// is a separate chunk. Public-site visitors never download it; app users
+// fetch it on demand. The fallback paints the ink background instantly.
+const AppRoot = lazy(() => import('./app/AppRoot'));
 
 const root = createRoot(document.getElementById('root')!);
 
@@ -26,9 +29,14 @@ const isAppRoute =
 
 if (isAppRoute) {
   root.render(
-    <AppProvider>
-      <App />
-    </AppProvider>
+    <Suspense fallback={
+      <div style={{
+        position: 'fixed', inset: 0,
+        background: 'radial-gradient(1200px 800px at 70% -10%, #1a0d0a 0%, #0a0a0c 55%, #08090b 100%)',
+      }} aria-hidden="true" />
+    }>
+      <AppRoot />
+    </Suspense>
   );
 } else {
   root.render(<SiteApp />);
