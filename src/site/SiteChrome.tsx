@@ -1,7 +1,8 @@
 // LifeOS — public marketing site shell (header/footer) + SEO head helper.
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { SITE, canonicalUrl } from '../lib/site';
 import { Logo } from '../ui/components';
+import { KageAmbient } from './KageAmbient';
 import './site.css';
 
 /** Sets document title, meta description, canonical and OG/Twitter tags per public page. */
@@ -44,13 +45,72 @@ export function useSeo(opts: { title: string; description: string; path: string 
 }
 
 export function SiteChrome({ children }: { children: React.ReactNode }) {
+  useKageInteractions();
   return (
     <div className="site-root">
+      <KageAmbient enabled />
       <SiteHeader />
       {children}
       <SiteFooter />
     </div>
   );
+}
+
+/** Site-wide Kage interactions: scroll-reveal sections, 3D tilt on feature
+ * cards toward the cursor, and magnetic CTAs. All rAF/observer-based and
+ * no-ops under prefers-reduced-motion. */
+function useKageInteractions() {
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    // 1) Scroll reveal — sections and card grids fade/slide in as they enter.
+    const revealables = document.querySelectorAll('.site-section, .prose-page > *');
+    revealables.forEach((el) => el.classList.add('reveal'));
+    const io = new IntersectionObserver((entries) => {
+      for (const en of entries) if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); }
+    }, { threshold: 0.12 });
+    revealables.forEach((el) => io.observe(el));
+
+    // 2) Card tilt — feature cards lean toward the cursor (perspective).
+    let raf = 0; let lastCard: HTMLElement | null = null;
+    const onCardMove = (e: PointerEvent) => {
+      const card = (e.target as HTMLElement).closest?.('.card-s') as HTMLElement | null;
+      if (lastCard && lastCard !== card) lastCard.style.transform = '';
+      lastCard = card;
+      if (!card) return;
+      const r = card.getBoundingClientRect();
+      const rx = ((e.clientY - r.top) / r.height - 0.5) * -6;
+      const ry = ((e.clientX - r.left) / r.width - 0.5) * 6;
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        card.style.transform = `perspective(700px) rotateX(${rx.toFixed(2)}deg) rotateY(${ry.toFixed(2)}deg) translateY(-3px)`;
+      });
+    };
+    const onCardLeave = () => { if (lastCard) { lastCard.style.transform = ''; lastCard = null; } };
+    document.addEventListener('pointermove', onCardMove, { passive: true });
+    document.addEventListener('pointerleave', onCardLeave);
+
+    // 3) Magnetic CTAs — buttons drift a few px toward the cursor.
+    const onCtaMove = (e: PointerEvent) => {
+      const cta = (e.target as HTMLElement).closest?.('.site-cta') as HTMLElement | null;
+      document.querySelectorAll<HTMLElement>('.site-cta').forEach((b) => { b.style.setProperty('--mag-x', '0px'); b.style.setProperty('--mag-y', '0px'); });
+      if (!cta) return;
+      const r = cta.getBoundingClientRect();
+      const dx = ((e.clientX - r.left) / r.width - 0.5) * 8;
+      const dy = ((e.clientY - r.top) / r.height - 0.5) * 6;
+      cta.style.setProperty('--mag-x', `${dx.toFixed(1)}px`);
+      cta.style.setProperty('--mag-y', `${dy.toFixed(1)}px`);
+    };
+    document.addEventListener('pointermove', onCtaMove, { passive: true });
+
+    return () => {
+      io.disconnect();
+      cancelAnimationFrame(raf);
+      document.removeEventListener('pointermove', onCardMove);
+      document.removeEventListener('pointerleave', onCardLeave);
+      document.removeEventListener('pointermove', onCtaMove);
+    };
+  }, []);
 }
 
 function SiteHeader() {

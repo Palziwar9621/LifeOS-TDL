@@ -8,6 +8,7 @@ import { isGuest, startGuest, exitGuest, guestId, snapshotGuest, clearGuestBacku
 import { dbState } from '../lib/db';
 import { startReminderScheduler } from '../lib/notifications';
 import { initScrollReporting } from '../lib/scrollReport';
+import { KageAmbient } from '../site/KageAmbient';
 
 export type Page =
   | 'home' | 'today' | 'tasks' | 'calendar' | 'weekly' | 'projects' | 'goals'
@@ -148,12 +149,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       root.classList.toggle('dark', dark);
       root.style.colorScheme = dark ? 'dark' : 'light';
       applyPremiumTheme(root, premiumTheme);
+      // The Kage ambient layer (cursor spotlight + embers + moon glow) rides
+      // along with the Kage theme. Other themes stay clean.
+      if (premiumTheme === 'kage') root.setAttribute('data-kage-ambient', '');
+      else root.removeAttribute('data-kage-ambient');
     };
     apply();
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
     mq.addEventListener('change', apply);
     return () => mq.removeEventListener('change', apply);
   }, [theme, premiumTheme]);
+
+  // Kage ambient canvas (app side). Mounted once; it self-disables under
+  // prefers-reduced-motion and pauses when the tab is hidden.
+  const [kageAmbient, setKageAmbient] = useState(premiumTheme === 'kage');
+  useEffect(() => { setKageAmbient(premiumTheme === 'kage'); }, [premiumTheme]);
 
   // Initialize store when a session appears
   useEffect(() => {
@@ -294,6 +304,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   return (
     <AppContext.Provider value={value}>
       {children}
+      {kageAmbient && <KageAmbient enabled />}
       {/* toast host */}
       <div className="fixed z-[100] bottom-4 right-4 flex flex-col gap-2 max-w-[92vw]">
         {toasts.map((t) => (
