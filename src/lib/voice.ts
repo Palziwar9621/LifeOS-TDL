@@ -53,8 +53,37 @@ let wantListening = false;
 let onHeard: ((text: string, isFinal: boolean) => void) | null = null;
 let onError: ((err: string) => void) | null = null;
 
-function nativeResult(text: string) { onHeard?.(text, true); }
-function nativePartial(text: string) { onHeard?.(text, false); }
+// --- Mic muting during speech (anti-feedback) ---
+// While the assistant talks, the mic hears the TTS through the speaker and
+// transcribes its own voice — that is the "tweaking" noise AND the reason
+// commands get eaten (garbage finals flood the pipeline). We hard-mute the
+// recognizer (and the native bridge) whenever speech synthesis is active,
+// plus a tail window after it ends (audio buffers + speaker latency).
+let muted = false;
+let unmuteTimer: ReturnType<typeof setTimeout> | null = null;
+
+function setMuted(m: boolean) {
+  if (muted === m) return;
+  muted = m;
+  try { (window as any).__lifeosMicMuted = m; } catch { /* ignore */ }
+  const n = nativeSpeech();
+  try { n?.setMuted?.(m); } catch { /* older bridges have no mute; we drop results instead */ }
+}
+
+export function duckMicForSpeech(): void {
+  setMuted(true);
+  if (unmuteTimer) clearTimeout(unmuteTimer);
+}
+
+export function unduckMicAfterSpeech(): void {
+  // 350ms tail: recognizers buffer audio; cutting exactly at speech end can
+  // still transcribe the last syllable echoed from the speaker.
+  if (unmuteTimer) clearTimeout(unmuteTimer);
+  unmuteTimer = setTimeout(() => setMuted(false), 350);
+}
+
+function nativeResult(text: string) { if (muted) return; onHeard?.(text, true); }
+function nativePartial(text: string) { if (muted) return; onHeard?.(text, false); }
 function nativeError(code: string) {
   if (code === '6' || code === '7' || code === 'no_match' || code === '8' || code === 'busy') return;
   // ERROR_CLIENT (5) is transient on many devices — the Android side now
@@ -105,7 +134,14 @@ function buildRecognizer(): SR | null {
     }
   };
   r.onend = () => {
-    if (wantListening) { try { r.start(); } catch { /* already started */ } }
+    // Continuous mode: restart unless the user asked to stop. If the mic is
+    // ducked (assistant speaking), wait for the unmute tail first — starting
+    // mid-speech just transcribes our own voice.
+    if (wantListening) {
+      const retry = () => { if (wantListening) { try { r.start(); } catch { /* already started */ } } };
+      if (muted) { const t = setInterval(() => { if (!muted) { clearInterval(t); retry(); } }, 120); }
+      else retry();
+    }
   };
   return r;
 }
@@ -160,6 +196,13 @@ export function buildAppContext(page: string, pageParams: Record<string, string>
 }
 
 // --- Tool-call execution ---
+function fmtTask(t: any): string {
+  const when = t.due_date
+    ? ` on ${t.due_date.slice(5)}` + (t.due_time ? ` at ${t.due_time.slice(0, 5)}` : '')
+    : '';
+  return `${t.title}${when}${t.status === 'completed' ? ' (done)' : ''}`;
+}
+
 async function runTool(
   call: ToolCall,
   ctx: { navigate: (p: any, params?: Record<string, string>) => void },
@@ -219,6 +262,61 @@ async function runTool(
       import('./nativeAlarms').then((m) => m.syncNativeAlarms());
       return on ? `Reminders on for ${t.title}` : `Reminders off for ${t.title}`;
     }
+    case 'query_tasks': {
+      const a = call.args ?? {};
+      const today = todayStr();
+      let list = s.tasks.filter((t) => !t.deleted && !t.archived);
+      if (a.title_contains) {
+        const q = String(a.title_contains).toLowerCase();
+        list = list.filter((t) => t.title.toLowerCase().includes(q));
+      }
+      if (a.date) {
+        list = list.filter((t) => t.due_date === a.date);
+      } else {
+        const tomorrow = new Date(Date.now() + 86400_000).toISOString().slice(0, 10);
+        const weekEnd = new Date(Date.now() + 6 * 86400_000).toISOString().slice(0, 10);
+        switch (a.date_range) {
+          case 'today': list = list.filter((t) => t.due_date === today); break;
+          case 'tomorrow': list = list.filter((t) => t.due_date === tomorrow); break;
+          case 'this_week': list = list.filter((t) => t.due_date && t.due_date >= today && t.due_date <= weekEnd); break;
+          case 'overdue': list = list.filter((t) => t.due_date && t.due_date < today && t.status !== 'completed'); break;
+          default: break; // 'all' or unspecified — leave unfiltered
+        }
+      }
+      list.sort((x, y) => (x.due_date ?? '9999').localeCompare(y.due_date ?? '9999') || (x.due_time ?? '').localeCompare(y.due_time ?? ''));
+      const shown = list.slice(0, 8).map(fmtTask);
+      return list.length
+        ? `${list.length} task${list.length === 1 ? '' : 's'}: ${shown.join('; ')}`
+        : 'No tasks found for that.';
+    }
+    case 'update_task': {
+      const q = String(call.args.title_match ?? '').toLowerCase();
+      const t = s.tasks.find((x) => !x.deleted && !x.archived && x.title.toLowerCase().includes(q))
+        ?? s.tasks.find((x) => !x.deleted && !x.archived && q.includes(x.title.toLowerCase()));
+      if (!t) return `I couldn't find a task matching "${call.args.title_match}"`;
+      const patch: Record<string, unknown> = {};
+      if (call.args.due_date) patch.due_date = call.args.due_date;
+      if (call.args.due_time) { patch.due_time = call.args.due_time; patch.remind_me = t.remind_me ?? true; }
+      if (call.args.priority) patch.priority = call.args.priority;
+      if (call.args.new_title) patch.title = call.args.new_title;
+      if (!Object.keys(patch).length) return 'Nothing to change.';
+      await updateTask(t.id, patch as any);
+      import('./nativeAlarms').then((m) => m.syncNativeAlarms());
+      const changes = [
+        call.args.due_date ? `date ${call.args.due_date}` : null,
+        call.args.due_time ? `time ${call.args.due_time}` : null,
+        call.args.priority ? `priority ${call.args.priority}` : null,
+        call.args.new_title ? `renamed to ${call.args.new_title}` : null,
+      ].filter(Boolean).join(', ');
+      return `Updated ${t.title}: ${changes}`;
+    }
+    case 'create_project': {
+      const { createProject } = await import('./db');
+      const name = String(call.args.name ?? '').slice(0, 60);
+      if (!name) return 'I need a name for the project.';
+      await createProject({ name } as any);
+      return `Project created: ${name}`;
+    }
     case 'navigate': {
       ctx.navigate(call.args.page);
       return `Opened ${call.args.page}`;
@@ -248,19 +346,22 @@ export interface CommandResult { ok: boolean; message: string; }
 export async function executeCommand(
   spoken: string,
   ctx: { page: string; pageParams: Record<string, string>; navigate: (p: any, params?: Record<string, string>) => void },
+  history: { role: 'user' | 'assistant'; content: string }[] = [],
 ): Promise<CommandResult> {
   const settings = getAssistantSettings();
 
   // 1) AI brain (when enabled): free-form understanding with app context.
   if (settings.useAI) {
     try {
-      const { reply, calls } = await askBrain(spoken, buildAppContext(ctx.page, ctx.pageParams));
+      const { reply, calls } = await askBrain(spoken, buildAppContext(ctx.page, ctx.pageParams), history);
       const parts: string[] = [];
       for (const c of calls) {
         try { parts.push(await runTool(c, ctx)); } catch (e: any) { parts.push(e?.message ?? 'action failed'); }
       }
-      const message = parts.length ? parts.join(' ') : (reply || "I couldn't map that to an action");
-      return { ok: parts.length > 0, message };
+      // The model's own reply IS the conversation — tool results only fill in
+      // when the model stayed silent (e.g. pure action with no content).
+      const message = reply || (parts.length ? parts.join(' ') : "I couldn't map that to an action");
+      return { ok: parts.length > 0 || !!reply, message };
     } catch {
       // fall through to offline parser
     }

@@ -72,6 +72,48 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'query_tasks',
+      description: 'Look up the user\'s tasks to answer questions like "what do I have on Friday", "when is my dentist appointment", "how many tasks are overdue". Returns matching tasks with dates/times/status.',
+      parameters: {
+        type: 'object',
+        properties: {
+          date: { type: 'string', description: 'Optional yyyy-MM-dd filter (resolved from context.today)' },
+          date_range: { type: 'string', enum: ['today', 'tomorrow', 'this_week', 'overdue', 'all'] },
+          title_contains: { type: 'string', description: 'Optional text to match in task titles' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'update_task',
+      description: 'Change an EXISTING task: reschedule, reprioritize, or rename. Use for "move X to friday", "reschedule X to 6pm", "make X urgent".',
+      parameters: {
+        type: 'object',
+        properties: {
+          title_match: { type: 'string', description: 'Task title (or clear part of it) to change' },
+          due_date: { type: 'string', description: 'New yyyy-MM-dd, if changing date' },
+          due_time: { type: 'string', description: 'New HH:mm 24h, if changing time' },
+          priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'] },
+          new_title: { type: 'string' },
+        },
+        required: ['title_match'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_project',
+      description: 'Create a project to group tasks under.',
+      parameters: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'navigate',
       description: 'Open a tab of the app.',
       parameters: { type: 'object', properties: { page: { type: 'string', enum: ['home', 'today', 'tasks', 'calendar', 'productivity', 'projects', 'goals', 'notes', 'ideas', 'reminders', 'stats', 'focus', 'review', 'settings'] } }, required: ['page'] },
@@ -95,8 +137,12 @@ const TOOLS = [
   },
 ];
 
-const SYSTEM_PROMPT = `You are LifeOS Assistant, the built-in voice assistant of a personal productivity app.
-The user speaks casual voice commands; convert them into tool calls using the provided context.
+const SYSTEM_PROMPT = `You are LifeOS Assistant, the built-in VOICE assistant of a personal productivity app — like a human helper sitting next to the user. Talk naturally, briefly, and warmly, the way a person would.
+
+You can CHAT and you can ACT:
+- Small talk or general conversation: just reply in natural spoken language, 1-2 short sentences a person would actually say out loud.
+- Questions about the user's data ("what's on friday", "when is my exam"): call query_tasks (or summarize_day) and ANSWER with the results in natural speech.
+- Commands: call the right tool, then confirm briefly and naturally ("Done — gym at 6 tomorrow, alarm set.").
 
 Rules:
 - ctx.today and ctx.time are the user's local date/time — resolve "tomorrow", "tonight", "next monday" against them.
@@ -105,9 +151,9 @@ Rules:
 - "remind me about X": if X likely exists use set_reminder(true), else create with remind_me=true.
 - "don't remind me about X": set_reminder(false).
 - Prefer add_task for actions, add_note for information, add_reminder for pure time nudges.
-- Prefer add_task for actions, add_note for information, add_reminder for pure time nudges.
-- Act on the most reasonable interpretation; do not ask questions back.
-- If nothing fits, return no tool call and a short spoken-style reply.`;
+- Use the conversation history so follow-ups ("move it to friday", "and add milk too") resolve from context.
+- Your reply is SPOKEN OUT LOUD: no markdown, no lists, no emoji — plain conversational sentences.
+- If you genuinely can't help, say so briefly in a human way and suggest what you CAN do.`;
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -133,9 +179,18 @@ Deno.serve(async (req) => {
       if (!userData?.user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: cors });
     }
 
-    const { spoken, ctx } = await req.json();
+    const { spoken, ctx, history } = await req.json();
     if (!spoken || typeof spoken !== 'string') return new Response(JSON.stringify({ error: 'No spoken text' }), { status: 400, headers: cors });
     if (spoken.length > 500) return new Response(JSON.stringify({ error: 'Command too long' }), { status: 400, headers: cors });
+    // Conversation history: last 8 turns, sanitized the same way as ctx.
+    const safeHistory: { role: string; content: string }[] = [];
+    if (Array.isArray(history)) {
+      for (const h of history.slice(-8)) {
+        if (h && typeof h === 'object' && (h.role === 'user' || h.role === 'assistant') && typeof h.content === 'string') {
+          safeHistory.push({ role: h.role, content: h.content.slice(0, 300) });
+        }
+      }
+    }
     // Context minimization: cap each list so an oversized/compromised client
     // can't balloon the prompt (defense-in-depth alongside client trimming).
     const safeCtx: Record<string, unknown> = {};
@@ -153,6 +208,7 @@ Deno.serve(async (req) => {
 
     const messages = [
       { role: 'system', content: SYSTEM_PROMPT + '\n\nCONTEXT: ' + JSON.stringify(safeCtx) },
+      ...safeHistory,
       { role: 'user', content: spoken },
     ];
 

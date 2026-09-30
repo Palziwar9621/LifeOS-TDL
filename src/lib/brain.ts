@@ -122,6 +122,48 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'query_tasks',
+      description: 'Look up the user\'s tasks to answer questions like "what do I have on Friday", "when is my dentist appointment", "how many tasks are overdue". Returns matching tasks with dates/times/status.',
+      parameters: {
+        type: 'object',
+        properties: {
+          date: { type: 'string', description: 'Optional yyyy-MM-dd filter (resolved from context.today)' },
+          date_range: { type: 'string', enum: ['today', 'tomorrow', 'this_week', 'overdue', 'all'] },
+          title_contains: { type: 'string', description: 'Optional text to match in task titles' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'update_task',
+      description: 'Change an EXISTING task: reschedule to another date/time, change priority, or rename. Use for "move X to friday", "reschedule X to 6pm", "make X urgent".',
+      parameters: {
+        type: 'object',
+        properties: {
+          title_match: { type: 'string', description: 'Task title (or clear part of it) to change' },
+          due_date: { type: 'string', description: 'New yyyy-MM-dd, if changing date' },
+          due_time: { type: 'string', description: 'New HH:mm 24h, if changing time' },
+          priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'] },
+          new_title: { type: 'string' },
+        },
+        required: ['title_match'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_project',
+      description: 'Create a project to group tasks under (e.g. "create a project called Renovation").',
+      parameters: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'navigate',
       description: 'Open a tab/section of the app.',
       parameters: {
@@ -149,29 +191,35 @@ const TOOLS = [
   },
 ];
 
-const SYSTEM_PROMPT = `You are LifeOS Assistant, the built-in voice assistant of a personal productivity app.
-The user speaks casual commands; you convert them into tool calls using the provided context.
+const SYSTEM_PROMPT = `You are LifeOS Assistant, the built-in VOICE assistant of a personal productivity app — like a human helper sitting next to the user. Talk naturally, briefly, and warmly, the way a person would.
+
+You can CHAT and you can ACT:
+- Small talk, questions about yourself, or general conversation: just reply in natural spoken language. Keep it to 1-2 short sentences a person would actually say out loud.
+- Questions about the user's data ("what's on friday", "when is my exam", "what did I plan today"): call query_tasks (or summarize_day) and ANSWER with the results in natural speech — like telling a friend, not like reading a table.
+- Commands to do something: call the right tool, then your spoken reply confirms it briefly and naturally ("Done — gym at 6 tomorrow, alarm set.").
 
 Rules:
-- "today" and current time are given in the user's timezone — resolve "tomorrow", "tonight", "next monday" against them.
-- Convert spoken times to 24h HH:mm ("9 PM" -> 21:00, "7:45" in the morning -> 07:45).
-- If a task has a specific time and the user didn't say "don't remind", set remind_me=true and reminder_minutes=0 (ring exactly at the time).
-- "remind me about X" = ensure the alarm is ON for X (set_reminder) if X exists, otherwise create it with remind_me=true.
-- "don't remind me about X" = set_reminder(false).
-- Prefer add_task for actions, add_note for information, add_reminder for pure time-based nudges.
-- If the request is ambiguous but you can make a reasonable interpretation, act — do not ask questions back (the interface is voice-only, one shot).
-- If nothing fits, return no tool call; instead the user sees a help hint.`;
+- ctx.today and ctx.time are the user's local date/time — resolve "tomorrow", "tonight", "next monday" against them.
+- Convert spoken times to 24h HH:mm ("9 PM" -> 21:00).
+- Task with a specific time and no "don't remind": remind_me=true, reminder_minutes=0 (ring exactly at the time).
+- "remind me about X": if X likely exists use set_reminder(true), else create with remind_me=true.
+- "don't remind me about X": set_reminder(false).
+- Prefer add_task for actions, add_note for information, add_reminder for pure time nudges.
+- Use the conversation history so follow-ups make sense: if the user says "move it to friday" or "and add milk too", resolve "it" and "also" from what was just discussed.
+- Your reply is SPOKEN OUT LOUD: no markdown, no lists, no emoji, no stage directions — plain conversational sentences.
+- If you genuinely can't help, say so briefly in a human way and suggest what you CAN do.`;
 
 export async function askBrain(
   spoken: string,
   ctx: AppContext,
+  history: { role: 'user' | 'assistant'; content: string }[] = [],
 ): Promise<{ reply: string; calls: ToolCall[] }> {
   const sb = getClient();
   const uid = currentUserId();
   if (!sb || !uid) return { reply: 'Not signed in', calls: [] };
 
   const { data, error } = await sb.functions.invoke('assistant', {
-    body: { spoken, ctx },
+    body: { spoken, ctx, history: history.slice(-8) },
   });
   if (error) throw new Error(error.message || 'Assistant service error');
 
