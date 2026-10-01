@@ -40,6 +40,9 @@ public class SpeechBridge {
     private TextToSpeech tts;
     private boolean ttsReady = false;
     private boolean micWasContinuous = false;
+    private boolean ttsInitializing = false;
+    private String pendingSpeech;
+    private String pendingListenMode;
 
     // Beep suppression WITHOUT muting STREAM_MUSIC — muting that stream also
     // muted our own TTS replies (they share it), which made the assistant go
@@ -63,7 +66,7 @@ public class SpeechBridge {
                 if (focusRequest == null) {
                     focusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
                         .setAudioAttributes(new AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+                             .setUsage(AudioAttributes.USAGE_ASSISTANT)
                             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                             .build())
                         .setOnAudioFocusChangeListener(focusChange -> { /* transient; nothing to pause */ })
@@ -94,7 +97,26 @@ public class SpeechBridge {
         });
     }
 
-    public SpeechBridge(Activity activity) { this.activity = activity; }
+    public SpeechBridge(Activity activity) {
+        this.activity = activity;
+        activity.runOnUiThread(this::initTts);
+    }
+
+    private void initTts() {
+        if (tts != null || ttsInitializing) return;
+        ttsInitializing = true;
+        tts = new TextToSpeech(activity.getApplicationContext(), status -> {
+            ttsInitializing = false;
+            ttsReady = status == TextToSpeech.SUCCESS;
+            if (ttsReady) {
+                try { tts.setLanguage(Locale.getDefault()); } catch (Exception ignored) {}
+                if (pendingSpeech != null) { String text = pendingSpeech; pendingSpeech = null; speakInternal(text); }
+            } else if (pendingSpeech != null) {
+                pendingSpeech = null;
+                fire("onSpeakEnd", "unavailable");
+            }
+        });
+    }
 
     /** Speak text out loud (web falls back here when speechSynthesis is absent). */
     @JavascriptInterface
@@ -102,21 +124,8 @@ public class SpeechBridge {
         if (text == null || text.isEmpty()) return "noop";
         activity.runOnUiThread(() -> {
             releaseBeepFocus(); // replies must be fully audible
-            if (tts == null) {
-                tts = new TextToSpeech(activity.getApplicationContext(), status -> {
-                    ttsReady = status == TextToSpeech.SUCCESS;
-                    if (ttsReady) {
-                        try { tts.setLanguage(Locale.getDefault()); } catch (Exception ignored) {}
-                    }
-                });
-            }
-            if (!ttsReady) {
-                // Engine still initializing — retry shortly so the first reply
-                // after app install is not silently dropped.
-                new android.os.Handler(activity.getMainLooper()).postDelayed(() -> speakInternal(text), 600);
-            } else {
-                speakInternal(text);
-            }
+            if (!ttsReady) { pendingSpeech = text; initTts(); }
+            else speakInternal(text);
         });
         return "speaking";
     }
@@ -180,12 +189,12 @@ public class SpeechBridge {
     @JavascriptInterface
     public String startContinuous() {
         activity.runOnUiThread(() -> {
+            continuous = true;
             if (activity.checkSelfPermission("android.permission.RECORD_AUDIO") != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                pendingListenMode = "continuous";
                 activity.requestPermissions(new String[]{"android.permission.RECORD_AUDIO"}, 2002);
-                fire("onSpeechError", "9");
                 return;
             }
-            continuous = true;
             startListening("continuous");
         });
         return "started";
@@ -195,6 +204,7 @@ public class SpeechBridge {
     public String stopContinuous() {
         activity.runOnUiThread(() -> {
             continuous = false;
+            pendingListenMode = null;
             releaseBeepFocus();
             if (recognizer != null) {
                 try { recognizer.stopListening(); } catch (Exception ignored) {}
@@ -203,6 +213,18 @@ public class SpeechBridge {
             }
         });
         return "stopped";
+    }
+
+    public void onPermissionResult(int requestCode, int[] grantResults) {
+        if (requestCode != 2002 || pendingListenMode == null) return;
+        String mode = pendingListenMode;
+        pendingListenMode = null;
+        if (grantResults != null && grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            startListening(mode);
+        } else {
+            continuous = false;
+            fire("onSpeechError", "9");
+        }
     }
 
     /** Restart a dead session (continuous mode): Android ends recognition
@@ -254,9 +276,8 @@ public class SpeechBridge {
             intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
             intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toString());
             intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
-            recognizer.startListening(intent);
             requestBeepSuppression(); // transient focus: silences the service's blips, keeps TTS audible
-            fire("onSpeechReady", "");
+            recognizer.startListening(intent);
         } catch (Exception e) {
             releaseBeepFocus();
             fire("onSpeechError", "exception");

@@ -35,6 +35,7 @@ public class MainActivity extends Activity {
     private View splash;
     private boolean splashGone = false;
     private boolean askedNotif = false;
+    private SpeechBridge speechBridge;
     private static MainActivity instance;
 
     // Runtime permission stages, requested ONE per user interaction round so
@@ -134,7 +135,8 @@ public class MainActivity extends Activity {
         // fires when every scroll container is at the very top.
         web.addJavascriptInterface(new ScrollReporter(swipe), "LifeOSScroll");
         // JS bridge: native speech recognition (WebView has no Web Speech API).
-        web.addJavascriptInterface(new SpeechBridge(this), "LifeOSSpeech");
+        speechBridge = new SpeechBridge(this);
+        web.addJavascriptInterface(speechBridge, "LifeOSSpeech");
         // JS bridge: background wake-word service control.
         web.addJavascriptInterface(new AssistantBridge(this), "LifeOSAssistant");
         instance = this;
@@ -221,6 +223,7 @@ public class MainActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (speechBridge != null) speechBridge.onPermissionResult(requestCode, grantResults);
         // Whatever the user answered, continue the queue so every permission
         // gets asked exactly once per install.
         startPermissionFlow();
