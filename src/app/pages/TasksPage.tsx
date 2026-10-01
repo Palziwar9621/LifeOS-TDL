@@ -158,12 +158,15 @@ export function TasksPage() {
   };
 
   const bulkDelete = () => {
-    confirm(`Delete ${selected.size} task(s)?`, 'This can be undone per-task only immediately after.', async () => {
+    confirm(`Delete ${selected.size} task(s)?`, 'This removes the selected tasks from this device and syncs the deletions.', async () => {
+      let n = 0;
       for (const key of selected) {
         const row = rows.find((r) => r.key === key);
-        if (row && !row.occ) await deleteTask(row.task.id);
+        // Recurring occurrences (row.occ) are completed per-day, not deletable
+        // rows — skip them rather than deleting the whole series silently.
+        if (row && !row.occ) { await deleteTask(row.task.id); n++; }
       }
-      toast('Tasks deleted', 'info');
+      toast(n === selected.size ? `Deleted ${n} task(s)` : `Deleted ${n} of ${selected.size} (recurring occurrences skipped)`, 'success');
       setSelected(new Set());
       setBulkMode(false);
     });

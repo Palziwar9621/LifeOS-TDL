@@ -1,5 +1,6 @@
 // LifeOS — shared UI primitives
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { PRIORITY_LABEL, PRIORITY_ICON, STATUS_LABEL } from '../lib/types';
 import type { Priority, TaskStatus } from '../lib/types';
 
@@ -62,7 +63,16 @@ export function Modal({ open, onClose, title, children, wide }: {
   }, [open, onClose]);
 
   if (!open) return null;
-  return (
+  if (typeof document === 'undefined') return null;
+  // Portal to <body>: a `position: fixed` overlay is positioned relative to the
+  // nearest ancestor that has a transform/filter/backdrop-filter (a transformed
+  // ancestor becomes its containing block). The `kage` theme applies
+  // `transform: translateY(-1px)` to `.card:hover`, and these dialogs are
+  // rendered inside task-row/page cards — so the "full-screen" overlay was
+  // being squeezed into the card's own 316×68 box, clipped and unusable
+  // (tapping Delete appeared to do nothing / the dialog stayed open).
+  // Rendering into <body> makes the overlay immune to any ancestor styling.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-6" role="dialog" aria-modal="true" aria-label={title}>
       <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-[2px] animate-fade-in" onClick={onClose} />
       <div className={`card relative w-full ${wide ? 'max-w-3xl' : 'max-w-lg'} max-h-[92vh] overflow-y-auto rounded-b-none sm:rounded-2xl animate-slide-up`}>
@@ -74,7 +84,8 @@ export function Modal({ open, onClose, title, children, wide }: {
         </div>
         <div className="p-5">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

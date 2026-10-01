@@ -10,6 +10,7 @@ import type {
 import { idbGet, idbSet, idbDel, cacheKey, idbWipeUser } from './idb';
 import { getClient } from './supabase';
 import { loadOutbox, pushOp, markFlushed, bumpAttempt, retryAllDead, type OutboxOp } from './outbox';
+import { mergePulledRows } from './syncMerge';
 import { todayStr } from './dates';
 
 /** Demo mode (#demo): no Supabase, purely local — used for previews and trials. */
@@ -241,6 +242,14 @@ function hasPendingOp(table: string, id: string): boolean {
       (o.ref === id)));
 }
 
+/** A queued delete — even a PARKED one — must keep the row deleted locally.
+ *  Without this, a parked delete op (server rejected it 12×) lets the next
+ *  pull() or a realtime event re-insert the "deleted" row: the task the user
+ *  deleted keeps coming back after sync. */
+function hasQueuedDelete(table: string, id: string): boolean {
+  return outbox.some((o) => o.kind === 'delete' && o.table === table && o.ref === id);
+}
+
 function mergeRemoteRow(table: Table, remote: Row) {
   if (table === 'user_settings') {
     if (!uid || (remote as any).user_id !== uid) return;
@@ -252,6 +261,7 @@ function mergeRemoteRow(table: Table, remote: Row) {
   }
   const list = (state as any)[table] as Row[] | undefined;
   if (!list) return;
+  if (hasQueuedDelete(table, remote.id)) return; // locally deleted; op still queued
   const idx = list.findIndex((r) => r.id === remote.id);
   if (idx === -1) {
     list.push(remote);
@@ -316,22 +326,7 @@ export async function pull(): Promise<void> {
       }
       const remote: Row[] = data ?? [];
       const localList = ((state as any)[t] ?? []) as Row[];
-      const pendingIds = new Set(
-        remote.length >= 0 ? localList.filter((l) => hasPendingOp(t, l.id)).map((l) => l.id) : []
-      );
-      const remoteIds = new Set(remote.map((r) => r.id));
-      const merged: Row[] = [];
-      for (const r of remote) {
-        const l = localList.find((x) => x.id === r.id);
-        if (!l) { merged.push(r); continue; }
-        if (pendingIds.has(r.id)) { merged.push(l); continue; }
-        merged.push((r.updated_at ?? '') >= (l.updated_at ?? '') ? r : l);
-      }
-      // keep pending inserts that are not yet on the server
-      for (const l of localList) {
-        if (!remoteIds.has(l.id) && pendingIds.has(l.id)) merged.push(l);
-      }
-      (state as any)[t] = merged;
+      (state as any)[t] = mergePulledRows(t, localList, remote, { hasPendingOp, hasQueuedDelete });
     }
     const { data: prof } = await sb.from('profiles').select('*').eq('id', uid).maybeSingle();
     if (prof) state.profiles = [prof];
@@ -633,7 +628,13 @@ const deleteSnapshots = new Map<string, DeletedTaskSnapshot>();
 
 export async function deleteTask(id: string): Promise<DeletedTaskSnapshot | null> {
   const task = state.tasks.find((t) => t.id === id);
-  if (!task) return null;
+  if (!task) {
+    // The row isn't in the local cache (stale reference after a pull, or the
+    // cache was evicted) but the caller has a valid id — still queue the
+    // server-side delete so the task cannot survive as a ghost row.
+    await deleteRow('tasks', id);
+    return null;
+  }
   const subtasks = state.subtasks.filter((s) => s.task_id === id);
   const tagIds = state.task_tags.filter((tt) => tt.task_id === id).map((tt) => tt.tag_id);
   deleteSnapshots.set(id, { task, subtasks, tagIds });

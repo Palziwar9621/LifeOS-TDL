@@ -36,16 +36,11 @@ export function TaskRow({ task, onEdit, dragProps, showProject = true }: {
   };
 
   const doDelete = () => {
-    confirm('Delete task?', 'This removes the task. You can undo from the toast immediately after.', () => {
-      void deleteTask(task.id).then((snap) => {
-        if (!snap) return;
-        setTimeout(() => {
-          toast('Task deleted', 'info');
-        }, 10);
-        // Undo affordance
-        setTimeout(() => {
-          // If the user clicks nothing, snapshot remains for session; Undo via toast not available.
-        }, 0);
+    confirm('Delete task?', 'This removes the task from this device and syncs the deletion.', () => {
+      void deleteTask(task.id).then(() => {
+        toast('Task deleted', 'success');
+      }).catch(() => {
+        toast('Could not delete the task. Please try again.', 'error');
       });
     });
   };

@@ -74,17 +74,20 @@ export function parseQuickAdd(input: string, today = todayStr()): ParsedQuickAdd
     text = text.replace(durRe, ' ');
   }
 
-  // recurrence: every day / every monday,wednesday / every weekday(s) / daily / weekly / monthly / yearly
-  const recRe = /\bevery\s+(day|weekday|weekdays|week|sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tue|tues|wed|thu|thurs|fri|sat)\b/gi;
+  // recurrence: every day / every monday,wednesday / every mon and wed / every weekday(s) /
+  //             daily / weekly / monthly / yearly — multi-day lists after "every" are captured
+  const DAY_ALT = 'day|weekday|weekdays|week|sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tue|tues|wed|thu|thurs|fri|sat';
+  const recRe = new RegExp(`\\bevery\\s+(${DAY_ALT})((?:\\s*(?:,|and)\\s*(?:${DAY_ALT}))*)\\b`, 'gi');
   const recMatches: string[] = [];
-  while ((m = recRe.exec(text))) recMatches.push(m[0]);
+  const dayWords: string[] = [];
+  while ((m = recRe.exec(text))) {
+    recMatches.push(m[0]);
+    const extra = (m[2] || '').split(/(?:\s*,\s*|\s+and\s+)/i).map((s) => s.trim()).filter(Boolean);
+    for (const w of [m[1], ...extra]) dayWords.push(w.toLowerCase());
+  }
   if (recMatches.length) {
     const joined = recMatches.join(' ').toLowerCase();
-    const days: number[] = [];
-    for (const rm of recMatches) {
-      const w = rm.replace(/^every\s+/i, '').toLowerCase();
-      if (DAY_NAMES[w] !== undefined) days.push(DAY_NAMES[w]);
-    }
+    const days: number[] = dayWords.map((w) => DAY_NAMES[w]).filter((v) => v !== undefined);
     if (/weekday/.test(joined)) {
       res.recurrence = 'weekdays';
     } else if (days.length) {
