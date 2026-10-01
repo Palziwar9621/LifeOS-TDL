@@ -1,5 +1,5 @@
 // LifeOS — Reminders page
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Icon, Modal, EmptyState, useConfirm } from '../../ui/components';
 import { dbState, createReminder, updateReminder, deleteReminder, snoozeReminder, completeReminder } from '../../lib/db';
 import type { Reminder, Priority } from '../../lib/types';
@@ -31,11 +31,21 @@ export function RemindersPage() {
 /** Embeddable panel (used inside the Tasks page as a tab). */
 export function RemindersPanel() {
   const s = dbState();
-  const { toast } = useApp();
+  const { toast, pageParams } = useApp();
   const { confirm, confirmEl } = useConfirm();
   const [editing, setEditing] = useState<Reminder | 'new' | null>(null);
   const [filter, setFilter] = useState<'open' | 'done' | 'all'>('open');
   const [perm, setPerm] = useState(notificationPermission());
+
+  // Calendar reminder chips open this page with the exact reminder id. Open
+  // the editor immediately so a reminder is not merely visible-but-unreachable.
+  useEffect(() => {
+    const id = pageParams.reminderId;
+    if (id) {
+      const reminder = dbState().reminders.find((r) => r.id === id && !r.deleted);
+      if (reminder) setEditing(reminder);
+    }
+  }, [pageParams.reminderId]);
 
   const list = s.reminders
     .filter((r) => !r.deleted)

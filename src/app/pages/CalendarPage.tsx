@@ -40,7 +40,7 @@ function loadFilters(): Set<CalFilter> {
 
 export function CalendarPage() {
   const s = dbState();
-  const { version } = useApp();
+  const { version, navigate } = useApp();
   const today = todayStr();
   const [view, setView] = useState<'day' | 'week' | 'month'>('week');
   const [cursor, setCursor] = useState(today);
@@ -179,8 +179,8 @@ export function CalendarPage() {
         <button className="btn-ghost btn-sm" onClick={() => move(1)} aria-label="Next"><Icon name="chevronR" className="h-4 w-4" /></button>
       </div>
 
-      {view === 'day' && <DayView date={cursor} items={itemsByDate.get(cursor) ?? []} onEdit={setEditing} onEditBlock={setEditingBlock} />}
-      {view === 'week' && <WeekView cursor={cursor} itemsByDate={itemsByDate} onEdit={setEditing} onEditBlock={setEditingBlock} />}
+       {view === 'day' && <DayView date={cursor} items={itemsByDate.get(cursor) ?? []} onEdit={setEditing} onEditBlock={setEditingBlock} onReminder={(id) => navigate('reminders', { reminderId: id })} />}
+       {view === 'week' && <WeekView cursor={cursor} itemsByDate={itemsByDate} onEdit={setEditing} onEditBlock={setEditingBlock} onReminder={(id) => navigate('reminders', { reminderId: id })} />}
       {view === 'month' && <MonthView cursor={cursor} today={today} itemsByDate={itemsByDate} onPick={(d) => { setCursor(d); setView('day'); }} />}
 
       <TaskEditor task={editing} onClose={() => setEditing(null)} />
@@ -198,7 +198,7 @@ function fmtShort(s: string) {
   return parseDateStr(s).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-function ItemChip({ item, onEdit, onEditBlock }: { item: CalItem; onEdit: (t: Task) => void; onEditBlock?: (b: ScheduleBlock) => void }) {
+function ItemChip({ item, onEdit, onEditBlock, onReminder }: { item: CalItem; onEdit: (t: Task) => void; onEditBlock?: (b: ScheduleBlock) => void; onReminder?: (id: string) => void }) {
   return (
     <button
       className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1 text-left text-xs font-medium text-white/95 transition hover:brightness-110"
@@ -211,6 +211,8 @@ function ItemChip({ item, onEdit, onEditBlock }: { item: CalItem; onEdit: (t: Ta
           }
         } else if (item.task) {
           onEdit(item.task);
+        } else if (item.kind === 'reminder') {
+          onReminder?.(item.id);
         }
       }}
       title={item.title}
@@ -221,20 +223,20 @@ function ItemChip({ item, onEdit, onEditBlock }: { item: CalItem; onEdit: (t: Ta
   );
 }
 
-function DayView({ date, items, onEdit, onEditBlock }: { date: string; items: CalItem[]; onEdit: (t: Task) => void; onEditBlock?: (b: ScheduleBlock) => void }) {
+function DayView({ date, items, onEdit, onEditBlock, onReminder }: { date: string; items: CalItem[]; onEdit: (t: Task) => void; onEditBlock?: (b: ScheduleBlock) => void; onReminder?: (id: string) => void }) {
   return (
     <div className="card p-5">
       <h2 className="mb-3 font-bold">{parseDateStr(date).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</h2>
       {items.length === 0 ? <EmptyState icon="calendar" title="Nothing planned" hint="This day is wide open." /> : (
         <div className="space-y-1.5">
-          {items.map((i) => <ItemChip key={i.kind + i.id} item={i} onEdit={onEdit} onEditBlock={onEditBlock} />)}
+           {items.map((i) => <ItemChip key={i.kind + i.id} item={i} onEdit={onEdit} onEditBlock={onEditBlock} onReminder={onReminder} />)}
         </div>
       )}
     </div>
   );
 }
 
-function WeekView({ cursor, itemsByDate, onEdit, onEditBlock }: { cursor: string; itemsByDate: Map<string, CalItem[]>; onEdit: (t: Task) => void; onEditBlock?: (b: ScheduleBlock) => void }) {
+function WeekView({ cursor, itemsByDate, onEdit, onEditBlock, onReminder }: { cursor: string; itemsByDate: Map<string, CalItem[]>; onEdit: (t: Task) => void; onEditBlock?: (b: ScheduleBlock) => void; onReminder?: (id: string) => void }) {
   const start = startOfWeek(cursor, 1);
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
   const names = weekdayShort(1);
@@ -244,7 +246,7 @@ function WeekView({ cursor, itemsByDate, onEdit, onEditBlock }: { cursor: string
         <div key={d} className={`card min-h-36 p-2.5 ${d === todayStr() ? 'ring-2 ring-brand-500' : ''}`}>
           <p className="mb-2 text-center text-xs font-bold uppercase tracking-wide muted">{names[i]} {fmtShort(d).split(' ')[1]}</p>
           <div className="space-y-1">
-            {(itemsByDate.get(d) ?? []).slice(0, 6).map((it) => <ItemChip key={it.kind + it.id} item={it} onEdit={onEdit} onEditBlock={onEditBlock} />)}
+             {(itemsByDate.get(d) ?? []).slice(0, 6).map((it) => <ItemChip key={it.kind + it.id} item={it} onEdit={onEdit} onEditBlock={onEditBlock} onReminder={onReminder} />)}
             {(itemsByDate.get(d) ?? []).length > 6 && (
               <p className="text-center text-[10px] muted">+{(itemsByDate.get(d) ?? []).length - 6} more</p>
             )}

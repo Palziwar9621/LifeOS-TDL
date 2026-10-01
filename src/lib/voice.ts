@@ -542,6 +542,27 @@ export async function executeCommand(
   // 2) Offline fallback parser (also the path when useAI is off).
   const intent: AssistantIntent = parseCommand(spoken);
   switch (intent.kind) {
+    case 'delete_task': {
+      const q = intent.title_match.toLowerCase();
+      const t = dbState().tasks.find((x) => !x.deleted && !x.archived && x.title.toLowerCase().includes(q));
+      if (!t) return { ok: false, message: `I couldn't find a task matching "${intent.title_match}"` };
+      await deleteTask(t.id);
+      return { ok: true, message: `Deleted: ${t.title}` };
+    }
+    case 'delete_reminder': {
+      const q = intent.title_match.toLowerCase();
+      const r = dbState().reminders.find((x) => !x.deleted && x.title.toLowerCase().includes(q));
+      if (!r) return { ok: false, message: `I couldn't find a reminder matching "${intent.title_match}"` };
+      await deleteReminder(r.id);
+      return { ok: true, message: `Deleted reminder: ${r.title}` };
+    }
+    case 'delete_note': {
+      const q = intent.title_match.toLowerCase();
+      const n = dbState().notes.find((x) => !x.deleted && x.title.toLowerCase().includes(q));
+      if (!n) return { ok: false, message: `I couldn't find a note matching "${intent.title_match}"` };
+      await deleteNote(n.id);
+      return { ok: true, message: `Deleted note: ${n.title}` };
+    }
     case 'add_task': {
       const p = parseQuickAdd(intent.text);
       await createTask({

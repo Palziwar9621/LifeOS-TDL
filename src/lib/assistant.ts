@@ -8,6 +8,7 @@ export type AssistantIntent =
   | { kind: 'add_task'; text: string; presetDate?: string; presetTime?: string; priority?: string }
   | { kind: 'add_reminder'; text: string; due_at?: string }
   | { kind: 'add_note'; title: string; content: string }
+  | { kind: 'delete_task' | 'delete_reminder' | 'delete_note'; title_match: string }
   | { kind: 'navigate'; page: string }
   | { kind: 'summarize_day' }
   | { kind: 'unknown'; text: string };
@@ -46,6 +47,19 @@ function normalize(spoken: string): string {
 
 export function parseCommand(spoken: string): AssistantIntent {
   const t = normalize(spoken);
+
+  // Keep destructive commands available offline too. The online brain has
+  // richer matching, but the fallback must not turn "delete X" into an
+  // unknown command when the network is unavailable.
+  const deleteM = t.match(/(?:delete|remove|erase)\s+(?:the\s+)?(.+)/);
+  if (deleteM) {
+    const raw = deleteM[1].trim();
+    const kind = /\b(note|notes)\b/.test(raw) ? 'delete_note'
+      : /\b(reminder|reminders)\b/.test(raw) ? 'delete_reminder'
+        : 'delete_task';
+    const title_match = raw.replace(/\b(task|tasks|note|notes|reminder|reminders)\b/g, '').trim();
+    return { kind, title_match: title_match || raw };
+  }
 
   // "add note <title> about <body>" / "take a note ..."
   const noteM = t.match(/(?:add|take|create|make)\s+(?:a\s+)?note\s+(.*)/);

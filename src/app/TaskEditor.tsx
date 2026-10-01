@@ -1,6 +1,6 @@
 // LifeOS — full task editor
 import React, { useEffect, useState } from 'react';
-import { Modal, Icon, TagInput, PriorityChip } from '../ui/components';
+import { Modal, Icon, TagInput, PriorityChip, useConfirm } from '../ui/components';
 import { dbState, updateTask, deleteTask, createSubtask, updateSubtask, deleteSubtask, createTag, linkTaskTag, unlinkTaskTag, completeTask, uncompleteTask } from '../lib/db';
 import type { Task, Priority, TaskStatus } from '../lib/types';
 import { RECURRENCE_LABEL } from '../lib/recurrence';
@@ -9,6 +9,7 @@ import { useApp } from './store';
 
 export function TaskEditor({ task, onClose, saved }: { task: Task | null; onClose: () => void; saved?: () => void }) {
   const { toast, navigate } = useApp();
+  const { confirm, confirmEl } = useConfirm();
   const s = dbState();
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
@@ -266,13 +267,14 @@ export function TaskEditor({ task, onClose, saved }: { task: Task | null; onClos
         </div>
 
         <div className="flex items-center justify-between gap-2 border-t border-slate-900/5 dark:border-white/10 pt-4">
-          <button className="btn-danger btn-sm" onClick={handleDelete}>Delete</button>
+          <button className="btn-danger btn-sm" onClick={() => confirm('Delete task?', `“${task?.title ?? 'This task'}” and its subtasks will be removed.`, () => void handleDelete())}>Delete</button>
           <div className="flex gap-2">
             <button className="btn-secondary" onClick={onClose}>Cancel</button>
             <button className="btn-primary" onClick={() => void save()}>Save</button>
           </div>
         </div>
       </div>
+      {confirmEl}
     </Modal>
   );
 
