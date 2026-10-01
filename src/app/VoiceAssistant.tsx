@@ -19,7 +19,7 @@ import {
   getAssistantSettings, extractWakeCommand, executeCommand,
   duckMicForSpeech, unduckMicAfterSpeech,
   nativeTtsSpeak, nativeTtsStop, nativeTtsSupported, setTtsUnavailableHandler,
-  type AssistantSettings,
+  voicePerfMark, type AssistantSettings,
 } from '../lib/voice';
 
 // Phrases that end the conversation session (checked case-insensitively).
@@ -98,8 +98,10 @@ export function VoiceAssistant() {
         historyRef.current = [];
         return;
       }
+      voicePerfMark('final_transcript');
       historyRef.current.push({ role: 'user', content: text });
       const res = await executeCommand(text, { page, pageParams, navigate }, historyRef.current);
+      voicePerfMark('reply_ready');
       speak(res.message);
       historyRef.current.push({ role: 'assistant', content: res.message });
       if (historyRef.current.length > 12) historyRef.current.splice(0, historyRef.current.length - 12);
@@ -161,9 +163,12 @@ export function VoiceAssistant() {
       setConv(false);
     } else {
       setConv(true);
-      speak("Hey! I'm listening.");
+      // Start the recognizer FIRST, then greet: the greeting ducks/pauses the
+      // mic anyway, so this order lets engine init overlap with speech instead
+      // of waiting for the whole greeting to finish before listening begins.
       const ok = startListening(stableTranscript, stableError);
       setListening(ok);
+      speak("Hey! I'm listening.");
     }
   }, [stableTranscript, stableError, speak]);
 

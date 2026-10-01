@@ -92,6 +92,37 @@ export function unduckMicAfterSpeech(): void {
 function nativeResult(text: string) { if (muted) return; onHeard?.(text, true); }
 function nativePartial(text: string) { if (muted) return; onHeard?.(text, false); }
 
+// --- Latency instrumentation (privacy-safe) ---
+// Stage names and milliseconds only — never transcripts or task content.
+// Surfaced in Settings → Voice Assistant so device-side stalls are visible.
+export type VoiceStage =
+  | 'listen_start'        // mic tapped / auto-start fired
+  | 'recognizer_ready'    // first onSpeechReady / web recognizer start accepted
+  | 'final_transcript'    // final transcript arrived
+  | 'reply_ready';        // command executed, reply text ready
+const MAX_PERF_ENTRIES = 12;
+let perf: { t: number; stage: VoiceStage; ms: number | null }[] = [];
+let stageStart: Partial<Record<VoiceStage, number>> = {};
+
+export function voicePerfMark(stage: VoiceStage): void {
+  const now = Date.now();
+  const anchor: VoiceStage =
+    stage === 'recognizer_ready' || stage === 'final_transcript' ? 'listen_start'
+    : stage === 'reply_ready' ? 'final_transcript'
+    : stage;
+  const ms = anchor !== stage && stageStart[anchor] != null ? now - stageStart[anchor]! : null;
+  stageStart[stage] = now;
+  perf.push({ t: now, stage, ms });
+  if (perf.length > MAX_PERF_ENTRIES) perf = perf.slice(-MAX_PERF_ENTRIES);
+  try { console.info(`[voice-perf] ${stage}${ms != null ? ` +${ms}ms` : ''}`); } catch { /* ignore */ }
+}
+
+/** Recent stage timings (newest last) — for the Settings diagnostics row. */
+export function getVoicePerf(): { stage: VoiceStage; ms: number | null; ago: number }[] {
+  const now = Date.now();
+  return perf.map((p) => ({ stage: p.stage, ms: p.ms, ago: now - p.t }));
+}
+
 // --- Native TTS (Android shell) ---
 // The Android WebView exposes window.speechSynthesis but it SILENTLY DOES
 // NOTHING there — spoken replies must go through the LifeOSSpeech bridge
@@ -156,7 +187,7 @@ export function installNativeSpeech(): void {
     onSpeechResult: nativeResult,
     onSpeechPartial: nativePartial,
     onSpeechError: nativeError,
-    onSpeechReady: () => { /* armed */ },
+    onSpeechReady: () => { voicePerfMark('recognizer_ready'); },
     ...(prev?.onSpeakEnd ? { onSpeakEnd: prev.onSpeakEnd } : {}),
   };
 }
@@ -209,6 +240,7 @@ export function startListening(
   onHeard = heard;
   onError = err ?? null;
   wantListening = true;
+  voicePerfMark('listen_start');
   const n = nativeSpeech();
   if (n && typeof n.startContinuous === 'function') {
     installNativeSpeech();
@@ -216,7 +248,7 @@ export function startListening(
   }
   if (!recog) recog = buildRecognizer();
   if (!recog) return false;
-  try { recog.start(); } catch { /* already running */ }
+  try { recog.start(); voicePerfMark('recognizer_ready'); } catch { /* already running */ }
   return true;
 }
 

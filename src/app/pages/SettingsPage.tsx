@@ -14,7 +14,7 @@ import { AlarmSoundPicker } from '../AlarmSoundPicker';
 import { updateUserPassword } from '../../lib/auth';
 import { getClient, loadSupabaseConfig } from '../../lib/supabase';
 import { createTask } from '../../lib/db';
-import { getAssistantSettings, saveAssistantSettings, speechSupported } from '../../lib/voice';
+import { getAssistantSettings, saveAssistantSettings, speechSupported, getVoicePerf } from '../../lib/voice';
 import { deleteAccountRemote, purgeLocalData } from '../../lib/deleteAccount';
 
 type Section = 'account' | 'appearance' | 'notifications' | 'assistant' | 'categories' | 'tags' | 'sync' | 'data' | 'security' | 'about';
@@ -251,9 +251,35 @@ function AssistantSection({ toast }: any) {
               <li>“Open calendar” / “What's on my day?”</li>
             </ul>
           </div>
+
+          <VoicePerf />
         </>
       )}
     </section>
+  );
+}
+
+// Voice-pipeline stage timings (stage names + ms only; never transcripts).
+// Makes device-side stalls visible without any developer tools.
+function VoicePerf() {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => tick((v) => v + 1), 2000);
+    return () => clearInterval(t);
+  }, []);
+  const entries = getVoicePerf().slice(-6);
+  if (!entries.length) return null;
+  return (
+    <div className="mt-4 text-xs muted">
+      <p className="font-semibold text-slate-700 dark:text-slate-200 mb-1">Recent voice timings</p>
+      <ul className="space-y-0.5">
+        {entries.map((e, i) => (
+          <li key={i}>
+            {e.stage}{e.ms != null ? `: +${e.ms} ms` : ''} <span className="opacity-60">({Math.round(e.ago / 1000)}s ago)</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
