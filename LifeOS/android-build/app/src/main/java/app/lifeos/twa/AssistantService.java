@@ -118,25 +118,12 @@ public class AssistantService extends Service {
         Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toString());
+        // On-device recognition does not play the network service's start/stop
+        // blips ("tui"/"tunun") — with a restart loop they'd beep every few
+        // seconds. Falls back to the network recognizer silently when no
+        // on-device model is installed.
+        i.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true);
         recognizer.startListening(i);
-        muteBeep();
-    }
-
-    /** Android plays a beep on the media stream at each recognition start —
-     *  with a restart loop that's a tweet every few seconds. Mute the stream
-     *  for the beep window, then restore. */
-    private void muteBeep() {
-        try {
-            android.media.AudioManager am = (android.media.AudioManager) getSystemService(Context.AUDIO_SERVICE);
-            am.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC,
-                    android.media.AudioManager.ADJUST_MUTE, 0);
-            new android.os.Handler(getMainLooper()).postDelayed(() -> {
-                try {
-                    am.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC,
-                            android.media.AudioManager.ADJUST_UNMUTE, 0);
-                } catch (Exception ignored) {}
-            }, 800);
-        } catch (Exception ignored) {}
     }
 
     private boolean heardWake(String t) {

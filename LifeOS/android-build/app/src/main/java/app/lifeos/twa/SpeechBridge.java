@@ -276,6 +276,11 @@ public class SpeechBridge {
             intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
             intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toString());
             intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+            // On-device recognition is beep-free (the network service plays its
+            // "tui"/"tunun" blips on every start/stop). This is the primary
+            // sound fix; the audio-focus request below covers devices that have
+            // no on-device model and fall back to the network recognizer.
+            intent.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true);
             requestBeepSuppression(); // transient focus: silences the service's blips, keeps TTS audible
             recognizer.startListening(intent);
         } catch (Exception e) {
