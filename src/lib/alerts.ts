@@ -19,7 +19,10 @@ import { getSettings, updateSettings } from './db';
 export type AlertMode = 'notify' | 'alarm' | 'off';
 
 export function getAlertMode(): AlertMode {
-  const v = (getSettings() as any).alert_mode;
+  // getSettings() already returns the settings data — the extra `.data` read
+  // was always undefined, so alert_mode read as 'notify' even when the user
+  // picked full alarm: notifications arrived but the alarm never rang.
+  const v = (getSettings() as any)?.alert_mode;
   return v === 'alarm' || v === 'off' ? v : 'notify';
 }
 

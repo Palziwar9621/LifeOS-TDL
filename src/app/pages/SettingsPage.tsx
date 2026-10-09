@@ -286,7 +286,8 @@ function VoicePerf() {
 function NotificationsSection({ toast }: any) {
   const settings = getSettings();
   const [enabled, setEnabled] = useState(settings.notifications_enabled !== false);
-  const [alarmSound, setAlarmSound] = useState<string | null>((settings.data as any)?.alarm_sound ?? 'chime');
+  // settings IS the data object (getSettings() unwraps user_settings.data).
+  const [alarmSound, setAlarmSound] = useState<string | null>((settings as any)?.alarm_sound ?? 'chime');
   const [mode, setMode] = useState<AlertMode>(getAlertMode());
   const perm = notificationPermission();
 

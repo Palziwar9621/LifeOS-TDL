@@ -130,7 +130,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
         {/* Bottom nav (mobile) */}
         <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 border-t border-slate-900/5 dark:border-white/10 bg-white/90 dark:bg-slate-950/90 backdrop-blur safe-bottom" aria-label="Mobile navigation">
           <div className="mx-auto flex max-w-lg">
-            {(['home', 'today', 'tasks', 'calendar'] as Page[]).map((k) => (
+            {/* Productivity (routines) gets the 4th slot — it's used daily;
+                Calendar stays reachable in the More sheet. */}
+            {(['home', 'today', 'tasks', 'productivity'] as Page[]).map((k) => (
               <button
                 key={k}
                 className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-semibold ${
@@ -189,7 +191,10 @@ function SyncBadge() {
 function MoreSheet({ onClose }: { onClose: () => void }) {
   const { navigate } = useApp();
   const { t } = useI18n();
-  const items = NAV.filter((n) => !['home', 'today', 'tasks', 'calendar'].includes(n.key));
+  // Calendar joins the More sheet (swapped with Productivity, which now sits
+  // in the bottom bar). 'productivity' must be filtered out here too.
+  const items = NAV.filter((n) => !['home', 'today', 'tasks', 'calendar', 'productivity'].includes(n.key));
+  items.unshift({ key: 'calendar', labelKey: 'nav.calendar', icon: 'calendar' });
   // Reminders were previously missing from every nav — reminders showed on
   // the calendar but the Reminders page itself was unreachable.
   if (!items.some((n) => n.key === 'reminders')) {

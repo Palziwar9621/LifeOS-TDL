@@ -8,6 +8,7 @@
 -- ---------- 1) Idea capture: photo + voice ----------
 alter table public.ideas add column if not exists photo_data text;
 alter table public.ideas add column if not exists voice_data text;
+alter table public.ideas add column if not exists voice_duration_secs int;
 
 -- ---------- 2) Productivity: routine tables ----------
 create table if not exists public.routine_tasks (

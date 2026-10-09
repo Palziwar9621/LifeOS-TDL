@@ -78,7 +78,10 @@ export function startReminderScheduler() {
       // default, the alarm overlay would never show, and the key would be
       // consumed as "already notified" — silently dead until the next day.
       if (!s.user_settings) return;
-      const defaultSound = (getSettings().data as any)?.alarm_sound as string | undefined;
+      // getSettings() already returns the settings DATA object — reading
+      // `.data` off it used to be always-undefined, so the user's chosen
+      // alarm sound was silently ignored.
+      const defaultSound = (getSettings() as any)?.alarm_sound as string | undefined;
 
       for (const r of s.reminders) {
         if (r.done || r.deleted) continue;
@@ -99,10 +102,12 @@ export function startReminderScheduler() {
       for (const t of s.tasks) {
         if (t.deleted || t.archived || t.status === 'completed' || t.status === 'cancelled') continue;
         if ((t as any).remind_me === false) continue; // per-task alarm off
-        const fire = taskReminderFireTime(t);
-        if (!fire) continue;
-        if (t.reminder_minutes == null) continue;
-        const fireMs = fire.getTime();
+        // taskReminderFireTime already defaults the lead to 0, so tasks with
+        // remind_me=true but no explicit reminder_minutes now ring AT the due
+        // time — `reminder_minutes == null` used to skip them entirely, which
+        // is why notifications silently never came for normal tasks.
+        const fireMs = taskReminderFireTime(t)?.getTime();
+        if (fireMs == null) continue;
         const key = `task:${t.id}:${t.due_date}:${t.due_time}`;
         if (fireMs <= now && now - fireMs < 60000 * 60 * 12 && !notified.has(key) && !isKeyDismissed(key)) {
           notified.add(key);
@@ -115,7 +120,11 @@ export function startReminderScheduler() {
       // Routine tasks with a time_of_day — alarm for today's unticked items.
       for (const rt of s.routine_tasks) {
         if (rt.archived || !rt.time_of_day) continue;
-        const matches = rt.weekday === parseDateStr(today).getDay() || rt.extra_date === today;
+        // Multi-weekday routines store days in rt.days (rt.weekday is only
+        // the legacy single-day field) — routines created via the multi-day
+        // picker never matched here, so their alarms never fired.
+        const dow = parseDateStr(today).getDay();
+        const matches = (Array.isArray(rt.days) && rt.days.length ? rt.days.includes(dow) : rt.weekday === dow) || rt.extra_date === today;
         if (!matches) continue;
         const done = s.routine_completions.some((c) => c.task_id === rt.id && c.done_date === today);
         if (done) continue;

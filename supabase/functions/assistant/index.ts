@@ -6,7 +6,10 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const MODEL = 'llama-3.3-70b-versatile';
+// Fast-first: llama-3.1-8b-instant answers in a fraction of the 70B's time —
+// tool-calling quality for these ~20 simple tools is comparable, and voice UX
+// cares about latency. 70B stays as a fallback for hard turns.
+const MODEL = 'llama-3.1-8b-instant';
 
 // Keep in sync with src/lib/brain.ts — the assistant has FULL app control:
 // tasks, notes, reminders, ideas, remember-items, projects, goals, nav.
@@ -227,6 +230,39 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'add_routine',
+      description: 'Create a repeating routine in the Productivity tab (daily habits, gym days, chores with a fixed schedule). Use when the user says something repeats — "gym every mon,wed,fri", "meditate daily at 7am". For one-off to-dos use add_task instead.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+          days: { type: 'array', items: { type: 'integer', enum: [0, 1, 2, 3, 4, 5, 6] }, description: 'Weekdays 0=Sunday..6=Saturday. Every day = [0,1,2,3,4,5,6]; empty/omitted with extra_date = one-off.' },
+          extra_date: { type: 'string', description: 'yyyy-MM-dd for a one-off routine on a specific date.' },
+          time_of_day: { type: 'string', description: 'HH:mm 24h, optional.' },
+        },
+        required: ['title'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_routine',
+      description: 'Delete a repeating routine from the Productivity tab by title match. Explicit deletes only.',
+      parameters: { type: 'object', properties: { title_match: { type: 'string' } }, required: ['title_match'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'query_routines',
+      description: 'List the user\'s routines (Productivity tab).',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'open_app',
       description: 'Bring the app to the foreground (Android).',
       parameters: { type: 'object', properties: {}, required: [] },
@@ -246,6 +282,7 @@ const SYSTEM_PROMPT = `You are LifeOS Assistant, the built-in VOICE assistant of
 
 You can CHAT and you can ACT — and you have FULL control of the app:
 - Tasks (add/complete/delete/reschedule/reprioritize), notes, standalone reminders, ideas, remember-items, projects, goals — you manage every section.
+- Routines (the Productivity tab, repeating habits with a weekly schedule): add_routine / delete_routine / query_routines. If the user asks to add or delete a task *while on the Productivity tab* or mentions a repeating schedule, use the routine tools, NOT add_task.
 - You can navigate anywhere: "open my notes", "show ideas", "go to the calendar" — use navigate. For Library sections pass page=library with tab=notes|ideas|remember.
 - "Capture an idea with camera/photo" → open_capture (the app opens the camera capture flow).
 - Small talk or general conversation: just reply in natural spoken language, 1-2 short sentences a person would actually say out loud.
@@ -323,7 +360,7 @@ Deno.serve(async (req) => {
 
     // Try the preferred model, fall back through Groq's catalog if it was
     // renamed/retired (prevents hard outages when Groq changes model IDs).
-    const candidates = [MODEL, 'llama-3.1-8b-instant', 'openai/gpt-oss-20b', 'gemma2-9b-it'];
+    const candidates = [MODEL, 'llama-3.3-70b-versatile', 'openai/gpt-oss-20b', 'gemma2-9b-it'];
     let res: Response | null = null;
     let lastErr = '';
     for (const model of candidates) {

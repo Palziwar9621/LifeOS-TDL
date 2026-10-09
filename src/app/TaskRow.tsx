@@ -70,7 +70,8 @@ export function TaskRow({ task, onEdit, dragProps, showProject = true }: {
       </button>
 
       <div className="min-w-0 flex-1" onClick={() => onEdit(task)}>
-        <p className={`truncate text-sm font-medium ${isDone ? 'text-slate-400 line-through' : ''}`}>{task.title}</p>
+        {/* 2-line clamp instead of truncate: long titles ("today I have to dinner at...") wrap with a continuation line instead of being cut off. */}
+        <p className={`text-sm font-medium [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden whitespace-normal break-words ${isDone ? 'text-slate-400 line-through' : ''}`}>{task.title}</p>
         <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
           {overdue && <span className="chip chip-danger">Overdue</span>}
           {task.due_date && (

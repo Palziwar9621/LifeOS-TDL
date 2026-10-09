@@ -167,7 +167,7 @@ export function ProductivityPage() {
                       {done && <Icon name="check" className="h-4 w-4" />}
                     </button>
                     <div className="min-w-0 flex-1">
-                      <p className={`font-semibold truncate ${done ? 'line-through' : ''}`}>{t.title}</p>
+                      <p className={`font-semibold [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden whitespace-normal break-words ${done ? 'line-through' : ''}`}>{t.title}</p>
                       <div className="flex items-center gap-2 text-xs muted">
                         <span className="h-2 w-2 rounded-full shrink-0" style={{ background: t.color }} />
                         <RoutineRepeatLabel task={t} />
@@ -277,7 +277,7 @@ function WeekGrid({ tasks, weekDays, isDone, onToggle, onEdit, onAddDay, today, 
                       title={`${t.title}${t.time_of_day ? ' · ' + t.time_of_day.slice(0, 5) : ''} — click to ${done ? 'untick' : 'tick'}`}
                       onClick={() => onToggle(t.id, d)}
                       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(t.id, d); } }}>
-                      <span className="truncate">{t.title}</span>
+                      <span className="max-w-[11rem] truncate" title={t.title}>{t.title}</span>
                       {t.time_of_day && <span className="text-white/80">{t.time_of_day.slice(0, 5)}</span>}
                       <button className="ml-0.5 opacity-70 hover:opacity-100" aria-label={`Edit ${t.title}`}
                         onClick={(e) => { e.stopPropagation(); onEdit(t); }}>

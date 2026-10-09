@@ -16,6 +16,7 @@ import {
   createTask, createNote, deleteNote, createReminder, deleteReminder, updateTask, deleteTask,
   createIdea, deleteIdea, convertIdeaToProject, createRememberItem, deleteRememberItem,
   createProject, deleteProject, createGoal, deleteGoal, dbState, getSettings,
+  createRoutineTask, deleteRoutineTask,
 } from './db';
 import { todayStr } from './dates';
 import { parseQuickAdd } from './quickadd';
@@ -300,11 +301,18 @@ export function buildAppContext(page: string, pageParams: Record<string, string>
     categories: s.categories.slice(0, 20).map((c) => ({ id: c.name, name: c.name })),
     recentTaskTitles: s.tasks.filter((t) => !t.deleted && !t.archived).slice(-10).map((t) => t.title),
     todayTaskCount: s.tasks.filter((t) => !t.deleted && t.due_date === todayStr() && t.status !== 'completed').length,
-    routines: (s.routine_tasks ?? []).filter((r) => !r.archived).slice(0, 15).map((r) => r.title),
+    routines: (s.routine_tasks ?? []).filter((r) => !r.archived).slice(0, 15).map((r) =>
+      r.title + (Array.isArray(r.days) && r.days.length ? ` (${r.days.map((d) => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(', ')})` : '')
+    ),
   };
 }
 
 // --- Tool-call execution ---
+function taskDaysOf(x: any): number[] {
+  if (Array.isArray(x.days) && x.days.length) return x.days.map(Number);
+  return x.weekday != null ? [Number(x.weekday)] : [];
+}
+
 function fmtTask(t: any): string {
   const when = t.due_date
     ? ` on ${t.due_date.slice(5)}` + (t.due_time ? ` at ${t.due_time.slice(0, 5)}` : '')
@@ -409,6 +417,40 @@ async function runTool(
       if (!it) return `I couldn't find that in Remember.`;
       await deleteRememberItem(it.id);
       return `Deleted remember item: ${it.title}`;
+    }
+    case 'add_routine': {
+      const a = call.args;
+      const days: number[] | null = Array.isArray(a.days) && a.days.length ? a.days.map(Number) : null;
+      const rt = await createRoutineTask({
+        title: String(a.title ?? ''),
+        days,
+        extra_date: !days ? (a.extra_date ?? null) : null,
+        time_of_day: a.time_of_day ?? null,
+      });
+      import('./nativeAlarms').then((m) => m.syncNativeAlarms());
+      const sched = days?.length
+        ? ` on ${days.map((d) => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(', ')}`
+        : rt.extra_date ? ` on ${rt.extra_date}` : '';
+      return `Routine added: ${rt.title}${sched}${a.time_of_day ? ` at ${a.time_of_day}` : ''}`;
+    }
+    case 'delete_routine': {
+      const q = String(call.args.title_match ?? '').toLowerCase();
+      const rt = s.routine_tasks.find((x) => !x.archived && x.title.toLowerCase().includes(q))
+        ?? s.routine_tasks.find((x) => !x.archived && q.includes(x.title.toLowerCase()));
+      if (!rt) return `I couldn't find a routine matching "${call.args.title_match}"`;
+      await deleteRoutineTask(rt.id);
+      import('./nativeAlarms').then((m) => m.syncNativeAlarms());
+      return `Deleted routine: ${rt.title}`;
+    }
+    case 'query_routines': {
+      const list = s.routine_tasks.filter((x) => !x.archived);
+      if (!list.length) return 'You have no routines set up.';
+      const shown = list.slice(0, 8).map((x) => {
+        const days = taskDaysOf(x);
+        const sched = days.length ? days.map((d) => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(', ') : (x.extra_date ?? 'one-off');
+        return `${x.title} (${sched}${x.time_of_day ? ` at ${x.time_of_day.slice(0, 5)}` : ''})`;
+      });
+      return `${list.length} routine${list.length === 1 ? '' : 's'}: ${shown.join('; ')}`;
     }
     case 'complete_task':
     case 'delete_task':

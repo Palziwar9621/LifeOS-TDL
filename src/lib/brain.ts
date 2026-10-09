@@ -289,6 +289,39 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'add_routine',
+      description: 'Create a repeating routine in the Productivity tab. Use when the user says something repeats ("gym every mon,wed,fri"). For one-off to-dos use add_task.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+          days: { type: 'array', items: { type: 'integer', enum: [0, 1, 2, 3, 4, 5, 6] }, description: 'Weekdays 0=Sunday..6=Saturday.' },
+          extra_date: { type: 'string', description: 'yyyy-MM-dd for a one-off routine.' },
+          time_of_day: { type: 'string', description: 'HH:mm 24h, optional.' },
+        },
+        required: ['title'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_routine',
+      description: 'Delete a repeating routine by title match. Explicit deletes only.',
+      parameters: { type: 'object', properties: { title_match: { type: 'string' } }, required: ['title_match'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'query_routines',
+      description: 'List the user\'s routines (Productivity tab).',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'open_app',
       description: 'Bring the LifeOS app to the foreground (Android). Use when the user says "open the app" from the background listener.',
       parameters: { type: 'object', properties: {}, required: [] },
