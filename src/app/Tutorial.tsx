@@ -124,6 +124,16 @@ export function Tutorial({ onDone }: { onDone?: () => void }) {
             <span className="text-xs muted">{idx + 1} / {STEPS.length}</span>
           </div>
           <p className="mt-3 text-sm">{step.body}</p>
+          {step.bullet && (
+            <ul className="mt-3 space-y-1.5">
+              {step.bullet.map((b) => (
+                <li key={b} className="flex gap-2 text-xs muted">
+                  <Icon name="check" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                  <span>{b}</span>
+                </li>
+              ))}
+            </ul>
+          )}
           <div className="mt-5 flex items-center justify-between gap-2">
             <div className="flex gap-1.5">
               {STEPS.map((_, i) => (
