@@ -1,14 +1,14 @@
 // Supabase Edge Function: assistant
-// Receives { spoken, ctx } from the app, calls Groq (llama-3.3-70b-versatile)
-// with a strict tool schema, and returns { reply, calls }.
+// Receives { spoken, ctx } from the app, calls Groq with a strict tool
+// schema, and returns { reply, calls }.
 // Secrets: GROQ_API_KEY (set via `npx supabase secrets set GROQ_API_KEY=...`).
 // Auth: requires a valid user access token (verify with SUPABASE_URL/keys).
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 // Fast-first: llama-3.1-8b-instant answers in a fraction of the 70B's time —
-// tool-calling quality for these ~20 simple tools is comparable, and voice UX
-// cares about latency. 70B stays as a fallback for hard turns.
+// tool-calling quality for these ~30 simple tools is comparable, and voice UX
+// cares about latency. 70B stays as the fallback for hard turns.
 const MODEL = 'llama-3.1-8b-instant';
 
 // Keep in sync with src/lib/brain.ts — the assistant has FULL app control:
@@ -260,6 +260,81 @@ const TOOLS = [
       parameters: { type: 'object', properties: {}, required: [] },
     },
   },
+  // ---------- Milestones (projects & goals) ----------
+  {
+    type: 'function',
+    function: {
+      name: 'add_milestone',
+      description: 'Add a milestone to an existing PROJECT ("add a milestone: design sign-off to the renovation project") or GOAL. Use scope to pick which.',
+      parameters: {
+        type: 'object',
+        properties: {
+          scope: { type: 'string', enum: ['project', 'goal'] },
+          name_match: { type: 'string', description: 'Project or goal name (or clear part of it)' },
+          title: { type: 'string', description: 'Milestone name, rephrased cleanly' },
+          due_date: { type: 'string', description: 'Optional yyyy-MM-dd deadline for the milestone.' },
+        },
+        required: ['scope', 'name_match', 'title'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'complete_milestone',
+      description: 'Mark an existing milestone done by its title.',
+      parameters: {
+        type: 'object',
+        properties: {
+          scope: { type: 'string', enum: ['project', 'goal'] },
+          name_match: { type: 'string', description: 'Project/goal name' },
+          title_match: { type: 'string', description: 'Milestone title (or clear part of it)' },
+        },
+        required: ['scope', 'name_match', 'title_match'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_milestone',
+      description: 'Delete an existing milestone by title. Explicit deletes only.',
+      parameters: {
+        type: 'object',
+        properties: {
+          scope: { type: 'string', enum: ['project', 'goal'] },
+          name_match: { type: 'string' },
+          title_match: { type: 'string' },
+        },
+        required: ['scope', 'name_match', 'title_match'],
+      },
+    },
+  },
+  // ---------- Recurrence on tasks ----------
+  {
+    type: 'function',
+    function: {
+      name: 'set_recurrence',
+      description: 'Make an EXISTING task recurring ("make laundry repeat daily", "trash every tuesday").',
+      parameters: {
+        type: 'object',
+        properties: {
+          title_match: { type: 'string' },
+          rule: { type: 'string', enum: ['daily', 'weekdays', 'weekly', 'monthly', 'yearly'] },
+          days: { type: 'array', items: { type: 'integer', enum: [0, 1, 2, 3, 4, 5, 6] }, description: 'For weekly: which weekdays (0=Sun..6=Sat).' },
+        },
+        required: ['title_match', 'rule'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'remove_recurrence',
+      description: 'Turn a recurring task back into a one-off.',
+      parameters: { type: 'object', properties: { title_match: { type: 'string' } }, required: ['title_match'] },
+    },
+  },
   {
     type: 'function',
     function: {
@@ -280,25 +355,36 @@ const TOOLS = [
 
 const SYSTEM_PROMPT = `You are LifeOS Assistant, the built-in VOICE assistant of a personal productivity app — like a human helper sitting next to the user. Talk naturally, briefly, and warmly, the way a person would.
 
-You can CHAT and you can ACT — and you have FULL control of the app:
-- Tasks (add/complete/delete/reschedule/reprioritize), notes, standalone reminders, ideas, remember-items, projects, goals — you manage every section.
-- Routines (the Productivity tab, repeating habits with a weekly schedule): add_routine / delete_routine / query_routines. If the user asks to add or delete a task *while on the Productivity tab* or mentions a repeating schedule, use the routine tools, NOT add_task.
-- You can navigate anywhere: "open my notes", "show ideas", "go to the calendar" — use navigate. For Library sections pass page=library with tab=notes|ideas|remember.
-- "Capture an idea with camera/photo" → open_capture (the app opens the camera capture flow).
-- Small talk or general conversation: just reply in natural spoken language, 1-2 short sentences a person would actually say out loud.
-- Questions about the user's data ("what's on friday", "when is my exam"): call query_tasks (or summarize_day) and ANSWER with the results in natural speech.
-- Commands: call the right tool, then confirm briefly and naturally ("Done — gym at 6 tomorrow, alarm set.").
+## UNDERSTANDING THE USER (crucial — speech is messy)
+The user's text often comes from imperfect speech recognition: misheard words, missing punctuation, broken grammar, filler words, or half-sentences. YOU are the layer that turns that mess into clean intent:
+- Interpret INTENT, not exact words. "remnd me py bill tomo 5" = "remind me to pay the bill tomorrow at 5". "dinner at 8 with sam at ob_ori" = dinner reservation, 8pm, place Obori (fix obvious phonetic garbles into plausible real words).
+- NEVER ask the user to repeat or say things verbatim. Your job is to GUESS the best interpretation and act on it. If it's genuinely ambiguous between two very different actions, pick the more likely one and say what you did in your reply — the user can correct you in the next sentence.
+- REPHRASE titles cleanly: turn spoken rambling into a short proper task title ("um yeah i need to remember to call the dentist place tomorrow around like 2 to book a cleaning" → add_task(title="Call dentist to book cleaning", due_date=tomorrow, due_time=14:00)).
+- Fill in missing pieces from context (history, current page, time of day).
 
-Rules:
+## WHAT YOU CAN DO
+You can CHAT and you can ACT — and you have FULL control of the app:
+- Tasks (add/complete/delete/reschedule/reprioritize, set recurrences), notes, standalone reminders, ideas, remember-items, projects, goals and their MILESTONES — you manage every section.
+- Routines (the Productivity tab, repeating habits): add_routine / delete_routine / query_routines. On the Productivity tab or with a repeating schedule → routine tools, NOT add_task.
+- Navigate anywhere: "open my notes" → navigate (Library sections: page=library with tab=notes|ideas|remember).
+- "Capture an idea with camera/photo" → open_capture.
+- Small talk, questions about yourself, or general conversation: just reply in natural spoken language. Keep it to 1-2 short sentences a person would actually say out loud.
+- Questions about the user's data ("what's on friday", "when is my exam"): call query_tasks (or summarize_day) and ANSWER with the results in natural speech — like telling a friend, not like reading a table.
+- Commands to do something: call the right tool, then your spoken reply confirms it briefly and naturally ("Done — gym at 6 tomorrow, alarm set.").
+
+## RULES
 - ctx.today and ctx.time are the user's local date/time — resolve "tomorrow", "tonight", "next monday" against them.
-- Convert spoken times to 24h HH:mm ("9 PM" -> 21:00).
+- Convert spoken times to 24h HH:mm ("9 PM" -> 21:00, "half past six" -> 18:30, "quarter to five" -> 16:45).
 - Task with a specific time and no "don't remind": remind_me=true, reminder_minutes=0 (ring exactly at the time).
 - "remind me about X": if X likely exists use set_reminder(true), else create with remind_me=true.
 - "don't remind me about X": set_reminder(false).
+- "interrupt / stop / wait": this sentence may have arrived mid-previous-reply; treat it as the user REPLACING what they said before — act on the newest instruction without referencing the old one.
 - Prefer add_task for actions, add_note for information, add_reminder for pure time nudges.
+- Milestones: "add milestone X to project Y" → add_milestone(scope=project, name_match=Y, title=X).
+- Recurring: "make X repeat daily/every monday" → set_recurrence; "stop X repeating" → remove_recurrence.
 - Deletes are explicit-only: call delete_* tools only when the user clearly asked to remove something.
-- Use the conversation history so follow-ups ("move it to friday", "and add milk too") resolve from context.
-- Your reply is SPOKEN OUT LOUD: no markdown, no lists, no emoji — plain conversational sentences.
+- Use the conversation history so follow-ups make sense: "move it to friday", "and add milk too" resolve "it"/"also" from what was just discussed.
+- Your reply is SPOKEN OUT LOUD: no markdown, no lists, no emoji, no stage directions — plain conversational sentences, ideally under 20 words.
 - If you genuinely can't help, say so briefly in a human way and suggest what you CAN do.`;
 
 const cors = {
@@ -367,7 +453,7 @@ Deno.serve(async (req) => {
       const r = await fetch(GROQ_URL, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model, messages, tools: TOOLS, tool_choice: 'auto', temperature: 0.1, max_tokens: 500 }),
+        body: JSON.stringify({ model, messages, tools: TOOLS, tool_choice: 'auto', temperature: 0.15, max_tokens: 700 }),
       });
       if (r.ok) { res = r; break; }
       lastErr = `${r.status}: ${(await r.text()).slice(0, 200)}`;

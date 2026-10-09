@@ -59,12 +59,26 @@ public class SpeechBridge {
     private final Runnable releaseFocusRunnable = this::releaseBeepFocus;
 
     private void requestBeepSuppression() {
+        requestBeepSuppression(false);
+    }
+
+    /**
+     * Hold the focus for one listen cycle (oneShot=true) OR for the entire
+     * continuous session (oneShot=false). Holding ACROSS utterances is what
+     * actually kills the blips in continuous mode: Google's recognizer plays
+     * its start/stop blip on every restart, and the old per-cycle focus let
+     * a fresh blip through on each restart. While continuous, the watchdog
+     * re-requests focus every 14s instead of releasing it.
+     */
+    private void requestBeepSuppression(boolean oneShot) {
         activity.runOnUiThread(() -> {
             try {
                 AudioManager am = (AudioManager) activity.getSystemService(Context.AUDIO_SERVICE);
                 if (am == null) return;
                 if (focusRequest == null) {
-                    focusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                    focusRequest = new AudioFocusRequest.Builder(oneShot
+                        ? AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
+                        : AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
                         .setAudioAttributes(new AudioAttributes.Builder()
                              .setUsage(AudioAttributes.USAGE_ASSISTANT)
                             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
@@ -75,10 +89,17 @@ public class SpeechBridge {
                 if (!holdingFocus) {
                     holdingFocus = am.requestAudioFocus(focusRequest) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
                 }
-                // Watchdog: never hold focus longer than 15s per listen cycle.
                 android.os.Handler h = new android.os.Handler(activity.getMainLooper());
                 h.removeCallbacks(releaseFocusRunnable);
-                h.postDelayed(releaseFocusRunnable, 15_000);
+                if (oneShot) {
+                    // Watchdog: never hold focus longer than 15s per listen cycle.
+                    h.postDelayed(releaseFocusRunnable, 15_000);
+                } else {
+                    // Continuous session: renew silently every 14s so focus ISN'T
+                    // released between utterances (that release let each restart
+                    // blip back through).
+                    h.postDelayed(() -> { if (continuous && holdingFocus) requestBeepSuppression(false); }, 14_000);
+                }
             } catch (Exception ignored) {}
         });
     }
@@ -86,6 +107,9 @@ public class SpeechBridge {
     private void releaseBeepFocus() {
         activity.runOnUiThread(() -> {
             try {
+                // In continuous mode keep the session focus held — releasing it
+                // between utterances lets the recognizer's restart blip play.
+                if (continuous && holdingFocus) return;
                 if (holdingFocus && focusRequest != null) {
                     AudioManager am = (AudioManager) activity.getSystemService(Context.AUDIO_SERVICE);
                     if (am != null) am.abandonAudioFocusRequest(focusRequest);
@@ -203,7 +227,7 @@ public class SpeechBridge {
     @JavascriptInterface
     public String stopContinuous() {
         activity.runOnUiThread(() -> {
-            continuous = false;
+            continuous = false;          // let releaseBeepFocus() actually abandon focus now
             pendingListenMode = null;
             releaseBeepFocus();
             if (recognizer != null) {
@@ -281,7 +305,9 @@ public class SpeechBridge {
             // sound fix; the audio-focus request below covers devices that have
             // no on-device model and fall back to the network recognizer.
             intent.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true);
-            requestBeepSuppression(); // transient focus: silences the service's blips, keeps TTS audible
+            // Continuous sessions hold focus across utterances so restarts stay
+            // silent; single listens use a 15s one-shot focus.
+            requestBeepSuppression(mode == null);
             recognizer.startListening(intent);
         } catch (Exception e) {
             releaseBeepFocus();

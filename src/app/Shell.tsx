@@ -8,6 +8,7 @@ import { getProfile, getOutboxCount, subscribeDb, getLastSyncError } from '../li
 import { QuickAddModal } from './quickadd';
 import { IdeaCaptureModal } from './IdeaCapture';
 import { VoiceAssistant } from './VoiceAssistant';
+import { Tutorial, TutorialGate, tutorialDone } from './Tutorial';
 import { useI18n } from '../lib/i18n';
 
 const NAV: { key: Page; labelKey: string; icon: string }[] = [
@@ -46,6 +47,21 @@ export function Shell({ children }: { children: React.ReactNode }) {
     const open = () => setCaptureOpen(true);
     window.addEventListener('lifeos-open-capture', open);
     return () => window.removeEventListener('lifeos-open-capture', open);
+  }, []);
+
+  // Tutorial: auto-opens for brand-new users (TutorialGate), and Settings can
+  // request it again via the 'lifeos-show-tutorial' event.
+  const [tourOpen, setTourOpen] = useState(false);
+  useEffect(() => {
+    const open = () => { if (tutorialDone()) { window.dispatchEvent(new CustomEvent('lifeos-reset-tutorial-flag')); } setTourOpen(true); };
+    window.addEventListener('lifeos-show-tutorial', open);
+    return () => window.removeEventListener('lifeos-show-tutorial', open);
+  }, []);
+  const [tourResetAt, setTourResetAt] = useState(0);
+  useEffect(() => {
+    const reset = () => setTourResetAt(Date.now());
+    window.addEventListener('lifeos-reset-tutorial-flag', reset);
+    return () => window.removeEventListener('lifeos-reset-tutorial-flag', reset);
   }, []);
 
   useEffect(() => {
@@ -163,6 +179,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
       <QuickAddModal open={qOpen} onClose={() => setQOpen(false)} />
       <IdeaCaptureModal open={captureOpen} onClose={() => setCaptureOpen(false)} onCaptured={() => setCaptureOpen(false)} />
       <VoiceAssistant />
+      <TutorialGate />
+      {tourOpen && <Tutorial key={tourResetAt} onDone={() => setTourOpen(false)} />}
       {confirmEl}
     </div>
   );

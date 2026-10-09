@@ -78,10 +78,21 @@ export function AuthScreen() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [info, setInfo] = useState('');
+  // Shown when a sign-in is rejected: Supabase can't tell "wrong password"
+  // from "no such account", so we treat it as "no account matches" and
+  // surface a one-tap Create-account-with-this-email offer.
+  const [noAccountAlso, setNoAccountAlso] = useState(false);
+
+  const switchToSignup = () => {
+    setErr(''); setInfo('');
+    setPassword('');
+    setNoAccountAlso(false);
+    setMode('signup');
+  };
 
   const submit = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    setErr(''); setInfo(''); setBusy(true);
+    setErr(''); setInfo(''); setBusy(true); setNoAccountAlso(false);
     try {
       const wasGuest = !!localStorage.getItem('lifeos.guest.id');
       // Snapshot guest data BEFORE auth: signing in resets the local store.
@@ -95,7 +106,14 @@ export function AuthScreen() {
       }
       if (mode === 'login') {
         const r = await signIn(email, password);
-        if (!r.ok) throw new Error(r.error ?? 'Sign in failed');
+        if (!r.ok) {
+          if (/wrong email or password|invalid login credentials/i.test(r.error ?? '')) {
+            setNoAccountAlso(true); // likely no account yet — offer signup
+            setErr('This email has no account yet — create one, or try again.');
+            return;
+          }
+          throw new Error(r.error ?? 'Sign in failed');
+        }
         // Signed in while holding guest data: migrate it into the account.
         if (wasGuest) {
           const m = await migrateGuestIntoAccount(guestSnap);
@@ -108,6 +126,8 @@ export function AuthScreen() {
       } else if (mode === 'signup') {
         const r = await signUp(email, password, username);
         if (!r.ok) throw new Error(r.error ?? 'Sign up failed');
+        // New account — clear any stale 'done' flag so the tour shows.
+        try { localStorage.removeItem('lifeos.tutorial.done'); } catch { /* ignore */ }
         if (r.needsEmailConfirm) {
           setInfo('Account created! We sent a confirmation link to your email — open it, then sign in here. Didn\'t get it? Use "Forgot password" to re-send.');
           setMode('login');
@@ -164,6 +184,11 @@ export function AuthScreen() {
         )}
         {err && <p className="rounded-xl bg-rose-50 dark:bg-rose-950/40 px-3 py-2 text-sm text-rose-700 dark:text-rose-300">{err}</p>}
         {info && <p className="rounded-xl bg-emerald-50 dark:bg-emerald-950/40 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">{info}</p>}
+        {noAccountAlso && mode === 'login' && (
+          <button className="w-full rounded-xl bg-brand-50 px-4 py-2.5 text-sm font-bold text-brand-700 transition hover:bg-brand-100 dark:bg-brand-950/40 dark:text-brand-200 dark:hover:bg-brand-900/60" type="button" onClick={switchToSignup}>
+            Create an account with this email →
+          </button>
+        )}
         <button className="btn-primary w-full" type="submit" disabled={busy}>
           {busy ? t('common.loading') : mode === 'login' ? t('auth.signIn') : mode === 'signup' ? t('auth.createAccount') : 'Send reset link'}
         </button>

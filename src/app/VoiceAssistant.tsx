@@ -73,21 +73,42 @@ export function VoiceAssistant() {
     }
     try {
       window.speechSynthesis.cancel();
+      try { (window as any).__lifeosSpeaking = msg; } catch { /* ignore */ }
       const u = new SpeechSynthesisUtterance(msg);
       const v = pickVoice();
       if (v) u.voice = v;
-      u.rate = 1.05;
+      u.rate = 1.12;   // slightly brisker — shorter replies, snappier feel
       u.pitch = 1.0;
-      u.onend = () => unduckMicAfterSpeech();
-      u.onerror = () => unduckMicAfterSpeech();
+      u.onend = () => { try { delete (window as any).__lifeosSpeaking; } catch { /* ignore */ } unduckMicAfterSpeech(); };
+      u.onerror = () => { try { delete (window as any).__lifeosSpeaking; } catch { /* ignore */ } unduckMicAfterSpeech(); };
       window.speechSynthesis.speak(u);
     } catch {
+      try { delete (window as any).__lifeosSpeaking; } catch { /* ignore */ }
       unduckMicAfterSpeech(); // TTS unavailable — hand the mic back immediately
     }
   }, []);
 
+  /** CUT the assistant off mid-sentence and take the user's next words. */
+  const cutSpeech = useCallback(() => {
+    if (nativeTtsSupported()) nativeTtsStop();
+    try { window.speechSynthesis?.cancel(); } catch { /* ignore */ }
+    try { delete (window as any).__lifeosSpeaking; } catch { /* ignore */ }
+    unduckMicAfterSpeech();
+  }, []);
+
+  // Monotonic token for the in-flight command: a barge-in bumps it, the
+  // running loop checks and abandons stale work (tool results discarded,
+  // reply not spoken).
+  const genRef = useRef(0);
+  // busy as a ref too: barge-in handlers run between React commits and a
+  // state-dependent `busy` guard would read stale(true) and swallow the
+  // user's interrupt sentence.
+  const busyRef = useRef(false);
+
   const runCommand = useCallback(async (text: string) => {
-    if (!text.trim() || busy) return;
+    if (!text.trim() || busyRef.current) return;
+    const gen = ++genRef.current;
+    busyRef.current = true;
     setBusy(true);
     try {
       if (matchesOffPhrase(text)) {
@@ -101,25 +122,47 @@ export function VoiceAssistant() {
       voicePerfMark('final_transcript');
       historyRef.current.push({ role: 'user', content: text });
       const res = await executeCommand(text, { page, pageParams, navigate }, historyRef.current);
+      if (gen !== genRef.current) return;   // barge-in during processing — drop the stale reply
       voicePerfMark('reply_ready');
       speak(res.message);
       historyRef.current.push({ role: 'assistant', content: res.message });
       if (historyRef.current.length > 12) historyRef.current.splice(0, historyRef.current.length - 12);
     } catch (e: any) {
-      speak(e?.message ?? 'Something went wrong — check your connection');
+      if (gen === genRef.current) speak(e?.message ?? 'Something went wrong — check your connection');
     } finally {
-      setBusy(false);
+      if (gen === genRef.current) {
+        busyRef.current = false;
+        setBusy(false);
+      }
     }
-  }, [busy, page, pageParams, navigate, speak]);
+  }, [page, pageParams, navigate, speak]);
 
   const onTranscript = useCallback((text: string, isFinal: boolean) => {
     if (!isFinal) return;             // no visuals for partials — it's a voice chat
-    if (busy) return;
-    if (conv) {
-      void runCommand(text);
+    const t = text.trim();
+    if (!t) return;
+    // BARGE-IN: while the assistant is speaking (mic ducked), voice.ts only
+    // forwards deliberate interrupt phrases — handle them here: cut the
+    // speech, cancel in-flight work, and take the user's words now.
+    const muted = !!(window as any).__lifeosMicMuted;
+    if (muted) {
+      cutSpeech();
+      genRef.current++;               // abort any in-flight command work
+      busyRef.current = false;
+      setBusy(false);
+      // The interrupt sentence itself is often "stop, don't do X" + the real
+      // substitution in the same breath. Feed it through as a normal command:
+      // the brain's prompt treats it as the user replacing the previous ask.
+      setConv(true);
+      void runCommand(t);
       return;
     }
-    const cmd = extractWakeCommand(text, settings);
+    if (busy) return;
+    if (conv) {
+      void runCommand(t);
+      return;
+    }
+    const cmd = extractWakeCommand(t, settings);
     if (cmd) {
       setConv(true);
       void runCommand(cmd);
@@ -127,7 +170,7 @@ export function VoiceAssistant() {
       setConv(true);
       speak("Hey! I'm listening.");
     }
-  }, [conv, busy, settings, runCommand, speak]);
+  }, [conv, busy, settings, runCommand, speak, cutSpeech]);
 
   // Cleanup on unmount
   useEffect(() => () => { stopListening(); }, []);
@@ -145,7 +188,7 @@ export function VoiceAssistant() {
   const transcriptRef = useRef(onTranscript);
   useEffect(() => { transcriptRef.current = onTranscript; }, [onTranscript]);
   const stableTranscript = useCallback((t: string, isFinal: boolean) => transcriptRef.current(t, isFinal), []);
-  const stableError = useCallback((err: string) => { if (!busy) setListening(false); }, [busy]);
+  const stableError = useCallback((_err: string) => { setListening(false); }, []);
 
   // Start listening once when the app opens and the assistant is enabled.
   useEffect(() => {

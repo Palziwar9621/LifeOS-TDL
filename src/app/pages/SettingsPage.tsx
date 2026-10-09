@@ -16,6 +16,7 @@ import { getClient, loadSupabaseConfig } from '../../lib/supabase';
 import { createTask } from '../../lib/db';
 import { getAssistantSettings, saveAssistantSettings, speechSupported, getVoicePerf } from '../../lib/voice';
 import { deleteAccountRemote, purgeLocalData } from '../../lib/deleteAccount';
+import { resetTutorial } from '../Tutorial';
 
 type Section = 'account' | 'appearance' | 'notifications' | 'assistant' | 'categories' | 'tags' | 'sync' | 'data' | 'security' | 'about';
 
@@ -745,6 +746,12 @@ function AboutSection() {
         <a className="btn-primary btn-sm" href="/download.html" target="_blank" rel="noreferrer">
           📲 Get the app
         </a>
+        <button
+          className="btn-secondary btn-sm"
+          onClick={() => { resetTutorial(); window.dispatchEvent(new CustomEvent('lifeos-show-tutorial')); }}
+        >
+          🎓 Show the tutorial again
+        </button>
         <span className="text-xs muted">Windows app · Android app</span>
       </div>
       <p className="mt-2 text-xs muted">Version 1.0.0 · Built with React, Vite, Tailwind CSS & Supabase</p>

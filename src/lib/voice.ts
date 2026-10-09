@@ -17,6 +17,8 @@ import {
   createIdea, deleteIdea, convertIdeaToProject, createRememberItem, deleteRememberItem,
   createProject, deleteProject, createGoal, deleteGoal, dbState, getSettings,
   createRoutineTask, deleteRoutineTask,
+  createProjectMilestone, updateProjectMilestone, deleteProjectMilestone,
+  createGoalMilestone, updateGoalMilestone, deleteGoalMilestone,
 } from './db';
 import { todayStr } from './dates';
 import { parseQuickAdd } from './quickadd';
@@ -90,8 +92,31 @@ export function unduckMicAfterSpeech(): void {
   unmuteTimer = setTimeout(() => setMuted(false), 350);
 }
 
-function nativeResult(text: string) { if (muted) return; onHeard?.(text, true); }
-function nativePartial(text: string) { if (muted) return; onHeard?.(text, false); }
+// --- Barge-in (interrupt the assistant mid-sentence) ---
+// While the assistant speaks, the mic is muted so it never transcribes its
+// own voice. But hard-dropping EVERYTHING also killed the user's ability to
+// interrupt. So while muted, transcripts are dropped UNLESS they look like a
+// deliberate interrupt ("stop", "wait", "cancel", "hey lifeos"...), and ONLY
+// if the transcript isn't just an echo of the sentence we're speaking.
+const BARGE_IN_RE = /\b(stop|stop it|wait|wait wait|cancel|never ?mind|hey lifeos|hello lifeos|hold on)\b/i;
+
+function isBargeIn(text: string): boolean {
+  const t = String(text ?? '').trim();
+  if (!t) return false;
+  // Ignore echoes of what the assistant itself is saying: if the transcript
+  // is a substring of the currently-spoken message (or vice versa) it's the
+  // recognizer picking up TTS, not the user.
+  const speaking = (typeof window !== 'undefined' ? (window as any).__lifeosSpeaking : '') || '';
+  if (speaking) {
+    const a = t.toLowerCase().replace(/[^a-z0-9 ]/g, '');
+    const b = speaking.toLowerCase().replace(/[^a-z0-9 ]/g, '');
+    if (a && b && (b.includes(a) || a.startsWith(b.slice(0, Math.min(24, b.length))))) return false;
+  }
+  return BARGE_IN_RE.test(t);
+}
+
+function nativeResult(text: string) { if (muted && !isBargeIn(text)) return; onHeard?.(text, true); }
+function nativePartial(text: string) { if (muted && !isBargeIn(text)) return; onHeard?.(text, false); }
 
 // --- Latency instrumentation (privacy-safe) ---
 // Stage names and milliseconds only — never transcripts or task content.
@@ -134,7 +159,8 @@ export function nativeTtsSpeak(text: string, onEnd?: () => void): boolean {
   const n = nativeSpeech();
   if (!n || typeof n.speak !== 'function') return false;
   let ended = false;
-  const finish = () => { if (ended) return; ended = true; onEnd?.(); };
+  const finish = () => { if (ended) return; ended = true; try { delete (window as any).__lifeosSpeaking; } catch { /* ignore */ } onEnd?.(); };
+  try { (window as any).__lifeosSpeaking = text; } catch { /* ignore */ } // barge-in echo check reads this
   // Watchdog: if the native engine never reports an end (missing TTS engine,
   // stalled init, swallowed callback), unduck anyway so the mic is never
   // stuck muted — a stuck mute made the assistant permanently deaf.
@@ -155,6 +181,7 @@ export function nativeTtsSpeak(text: string, onEnd?: () => void): boolean {
 }
 
 export function nativeTtsStop(): void {
+  try { delete (window as any).__lifeosSpeaking; } catch { /* ignore */ }
   const n = nativeSpeech();
   try { n?.stopSpeak?.(); } catch { /* ignore */ }
 }
@@ -208,8 +235,16 @@ function buildRecognizer(): SR | null {
       if (res.isFinal) final += res[0].transcript;
       else interim += res[0].transcript;
     }
-    if (final) onHeard?.(final.trim(), true);
-    else if (interim) onHeard?.(interim.trim(), false);
+    // Same mute contract as the native bridge: drop echo while ducked, but
+    // always let a deliberate barge-in phrase through.
+    if (final) {
+      if (muted && !isBargeIn(final)) return;
+      onHeard?.(final.trim(), true);
+    }
+    else if (interim) {
+      if (muted && !isBargeIn(interim)) return;
+      onHeard?.(interim.trim(), false);
+    }
   };
   r.onerror = (e: any) => {
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
@@ -451,6 +486,89 @@ async function runTool(
         return `${x.title} (${sched}${x.time_of_day ? ` at ${x.time_of_day.slice(0, 5)}` : ''})`;
       });
       return `${list.length} routine${list.length === 1 ? '' : 's'}: ${shown.join('; ')}`;
+    }
+    // ---------- Milestones (projects & goals) ----------
+    case 'add_milestone': {
+      const a = call.args;
+      const scope = a.scope === 'goal' ? 'goal' : 'project';
+      const q = String(a.name_match ?? '').toLowerCase();
+      if (scope === 'project') {
+        const p = s.projects.find((x) => !x.archived && x.name.toLowerCase().includes(q))
+          ?? s.projects.find((x) => !x.archived && q.includes(x.name.toLowerCase()));
+        if (!p) return `I couldn't find a project matching "${a.name_match}"`;
+        const m = await createProjectMilestone(p.id, String(a.title ?? ''), a.due_date ?? null);
+        return `Milestone added to ${p.name}: ${m.title}`;
+      }
+      const g = s.goals.find((x) => x.status === 'active' && x.title.toLowerCase().includes(q))
+        ?? s.goals.find((x) => x.status === 'active' && q.includes(x.title.toLowerCase()));
+      if (!g) return `I couldn't find a goal matching "${a.name_match}"`;
+      const gm = await createGoalMilestone(g.id, String(a.title ?? ''));
+      return `Milestone added to ${g.title}: ${gm.title}`;
+    }
+    case 'complete_milestone':
+    case 'delete_milestone': {
+      const a = call.args;
+      const scope = a.scope === 'goal' ? 'goal' : 'project';
+      const q = String(a.name_match ?? '').toLowerCase();
+      const mq = String(a.title_match ?? '').toLowerCase();
+      if (scope === 'project') {
+        const p = s.projects.find((x) => !x.archived && x.name.toLowerCase().includes(q));
+        if (!p) return `I couldn't find a project matching "${a.name_match}"`;
+        const ms = s.project_milestones.filter((m) => m.project_id === p.id);
+        const m = ms.find((x) => x.title.toLowerCase().includes(mq)) ?? ms.find((x) => mq.includes(x.title.toLowerCase()));
+        if (!m) return `I couldn't find a milestone matching "${a.title_match}" in ${p.name}`;
+        if (call.name === 'complete_milestone') {
+          await updateProjectMilestone(m.id, { done: true } as any);
+          return `Milestone done: ${m.title}`;
+        }
+        await deleteProjectMilestone(m.id);
+        return `Deleted milestone: ${m.title}`;
+      }
+      const g = s.goals.find((x) => x.title.toLowerCase().includes(q));
+      if (!g) return `I couldn't find a goal matching "${a.name_match}"`;
+      const ms = s.goal_milestones.filter((m) => m.goal_id === g.id);
+      const m = ms.find((x) => x.title.toLowerCase().includes(mq)) ?? ms.find((x) => mq.includes(x.title.toLowerCase()));
+      if (!m) return `I couldn't find a milestone matching "${a.title_match}" in ${g.title}`;
+      if (call.name === 'complete_milestone') {
+        await updateGoalMilestone(m.id, { done: true } as any);
+        return `Milestone done: ${m.title}`;
+      }
+      await deleteGoalMilestone(m.id);
+      return `Deleted milestone: ${m.title}`;
+    }
+    // ---------- Recurrence on tasks ----------
+    case 'set_recurrence': {
+      const q = String(call.args.title_match ?? '').toLowerCase();
+      const t = s.tasks.find((x) => !x.deleted && !x.archived && x.title.toLowerCase().includes(q))
+        ?? s.tasks.find((x) => !x.deleted && !x.archived && q.includes(x.title.toLowerCase()));
+      if (!t) return `I couldn't find a task matching "${call.args.title_match}"`;
+      const rule = String(call.args.rule ?? 'weekly');
+      const days: number[] | null = Array.isArray(call.args.days) && call.args.days.length ? call.args.days.map(Number) : null;
+      // Task model supports daily/weekly/monthly/yearly via recurrence +
+      // weekday list; 'weekdays' maps to the Mon-Fri day list.
+      const mapped = rule === 'weekdays' ? 'weekly' : rule;
+      const patch: Record<string, unknown> = { recurrence: mapped as any };
+      if (mapped === 'weekly') {
+        patch.recurrence_days = days ?? [t.due_date ? new Date(t.due_date + 'T00:00:00').getDay() : new Date().getDay()];
+        patch.recurrence_monthday = null;
+      } else if (mapped === 'monthly') {
+        patch.recurrence_days = null;
+        patch.recurrence_monthday = t.due_date ? new Date(t.due_date + 'T00:00:00').getDate() : null;
+      } else {
+        patch.recurrence_days = null;
+        patch.recurrence_monthday = null;
+      }
+      if (!t.recurrence_anchor && t.due_date) patch.recurrence_anchor = t.due_date;
+      await updateTask(t.id, patch as any);
+      return `Repeating ${rule}: ${t.title}`;
+    }
+    case 'remove_recurrence': {
+      const q = String(call.args.title_match ?? '').toLowerCase();
+      const t = s.tasks.find((x) => !x.deleted && !x.archived && x.title.toLowerCase().includes(q))
+        ?? s.tasks.find((x) => !x.deleted && !x.archived && q.includes(x.title.toLowerCase()));
+      if (!t) return `I couldn't find a task matching "${call.args.title_match}"`;
+      await updateTask(t.id, { recurrence: null, recurrence_days: null, recurrence_monthday: null } as any);
+      return `${t.title} no longer repeats`;
     }
     case 'complete_task':
     case 'delete_task':
