@@ -7,7 +7,6 @@ import { initStore, resetStore, setToastFn, flush, pull, getOutboxCount, getOnli
 import { isGuest, startGuest, exitGuest, guestId, snapshotGuest, clearGuestBackup } from '../lib/guest';
 import { dbState } from '../lib/db';
 import { startReminderScheduler } from '../lib/notifications';
-import { initScrollReporting } from '../lib/scrollReport';
 import { KageAmbient } from '../site/KageAmbient';
 
 export type Page =
@@ -183,7 +182,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       import('../lib/nativeAlarms').then((m) => m.startNativeAlarmSync());
       // Tell the Android shell when the page is scrolled to the top
       // (pull-to-refresh gating). No-op elsewhere.
-      initScrollReporting();
     })();
     return () => { cancelled = true; };
   }, [session?.user?.id]);

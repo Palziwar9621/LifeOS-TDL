@@ -117,10 +117,10 @@ const STEPS: Step[] = [
 function QuickAddPractice() {
   const [text, setText] = useState('Read tomorrow at 7pm !high #learning');
   const parsed = parseQuickAdd(text);
-  return <div className="mt-3 rounded-xl bg-slate-100 p-3 dark:bg-slate-800">
+  return <div className="space-y-2 rounded-xl bg-slate-100 p-3 dark:bg-slate-800">
     <label htmlFor="tour-practice" className="label">Try smart add — preview only</label>
     <input id="tour-practice" className="input" value={text} onChange={e => setText(e.target.value)} aria-describedby="tour-practice-preview" />
-    <p id="tour-practice-preview" className="mt-2 text-xs muted" aria-live="polite">
+    <p id="tour-practice-preview" className="break-words text-xs leading-relaxed muted" aria-live="polite">
       {text.trim() ? `Title: ${parsed.title || '(add a title)'} · Due: ${parsed.due_date ?? 'none'} ${parsed.due_time ?? ''} · Priority: ${parsed.priority ?? 'default'} · Tags: ${parsed.tags.join(', ') || 'none'}` : 'Type a task to see what LifeOS detects. Nothing will be saved.'}
     </p>
   </div>;
@@ -150,39 +150,47 @@ export function Tutorial({ userId, initial, onDone }: { userId: string; initial:
 
   return <section className="card mb-5 overflow-hidden border border-brand-500/30" aria-label="LifeOS getting started guide"
     onKeyDown={e => { if (e.key === 'Escape' && !collapsed) { e.stopPropagation(); setCollapsed(true); toggle.current?.focus(); } }}>
-    <div className="flex flex-wrap items-center gap-2 bg-brand-500/10 px-4 py-3">
-      <Logo size={20} />
-      <span className="flex-1 text-xs font-semibold" aria-live="polite">Your guide · Topic {idx + 1} of {STEPS.length}</span>
-      <button ref={toggle} type="button" className="btn-secondary btn-sm" aria-expanded={!collapsed} aria-controls={collapsed ? undefined : 'tour-details'} onClick={() => setCollapsed(!collapsed)}>
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 bg-brand-500/10 px-4 py-3">
+      <Logo size={18} />
+      <span className="flex-1 truncate text-xs font-semibold" aria-live="polite" title={step.title}>
+        {collapsed ? step.title : `Your guide · Topic ${idx + 1} of ${STEPS.length}`}
+      </span>
+      <button ref={toggle} type="button" className="btn-secondary btn-sm shrink-0" aria-expanded={!collapsed} aria-controls={collapsed ? undefined : 'tour-details'} onClick={() => setCollapsed(!collapsed)}>
         {collapsed ? 'Return to guide' : 'Minimize'}
       </button>
-      <button type="button" className="btn-ghost btn-sm" onClick={() => finish('skipped')}>Skip tour</button>
+      <button type="button" className="btn-ghost btn-sm shrink-0" onClick={() => finish('skipped')}>Skip tour</button>
     </div>
-    {collapsed ? <p className="px-4 py-2 text-xs muted">{step.title} · Explore at your own pace. Return here for the next topic.</p> :
-      <div id="tour-details" className="p-4 sm:p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 ref={heading} tabIndex={-1} className="text-lg font-extrabold tracking-tight">{step.title}</h2>
-          <div className="min-w-0 max-w-full">
+    {collapsed ? <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2.5 text-xs muted">
+      <progress className="h-1.5 w-16 shrink-0 accent-brand-500" value={idx + 1} max={STEPS.length} aria-label="Current tour topic" />
+      <span className="min-w-0 flex-1 truncate" title={step.title}>{step.title}</span>
+      <span className="shrink-0">{idx + 1}/{STEPS.length}</span>
+    </div> :
+      <div id="tour-details" className="space-y-3 p-4 sm:px-5">
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <h2 ref={heading} tabIndex={-1} className="text-lg font-extrabold leading-snug tracking-tight sm:shrink-0 sm:max-w-[60%]">{step.title}</h2>
+          <div className="min-w-0 sm:w-56">
             <label htmlFor="tour-topic" className="sr-only">Jump to a tour topic</label>
-            <select id="tour-topic" className="input max-w-full !w-auto text-sm" value={idx} onChange={e => setIdx(Number(e.target.value))}>
+            <select id="tour-topic" className="input !w-full text-sm sm:!w-auto" value={idx} onChange={e => setIdx(Number(e.target.value))}>
               {STEPS.map((s, i) => <option key={s.title} value={i}>{i + 1}. {s.title}</option>)}
             </select>
           </div>
         </div>
-        <progress className="mt-3 h-2 w-full accent-brand-500" value={idx + 1} max={STEPS.length} aria-label="Current tour topic" />
-        <p className="mt-3 text-sm">{step.body}</p>
-        <p className="mt-3 rounded-xl bg-brand-500/10 p-3 text-sm"><strong>Try it: </strong>{step.tryIt}</p>
-        <ul className="mt-3 list-disc space-y-1 pl-5 text-xs muted">{step.tips.map(tip => <li key={tip}>{tip}</li>)}</ul>
+        <progress className="h-2 w-full accent-brand-500" value={idx + 1} max={STEPS.length} aria-label="Current tour topic" />
+        <p className="text-sm leading-relaxed">{step.body}</p>
+        <p className="rounded-xl bg-brand-500/10 p-3 text-sm leading-relaxed"><strong>Try it: </strong>{step.tryIt}</p>
+        <ul className="list-disc space-y-1 pl-5 text-xs leading-relaxed muted">{step.tips.map(tip => <li key={tip}>{tip}</li>)}</ul>
         {step.practice && <QuickAddPractice />}
-        {idx === 0 && <p className="mt-3 text-xs muted">{isGuestMode() || isDemoMode() ? 'You are using local-only mode. Your data stays on this device.' : 'Your work is local-first and syncs to your account when connected.'}</p>}
-        <div className="mt-4 flex flex-wrap items-center gap-2">
+        {idx === 0 && <p className="text-xs muted">{isGuestMode() || isDemoMode() ? 'You are using local-only mode. Your data stays on this device.' : 'Your work is local-first and syncs to your account when connected.'}</p>}
+        <div className="flex flex-wrap items-center gap-2 pt-1">
           <button type="button" className="btn-primary" onClick={explore}>{step.action}</button>
           <div className="flex-1" />
-          <button type="button" className="btn-ghost btn-sm" onClick={() => { setIdx(0); setCollapsed(false); }}>Restart</button>
-          <button type="button" className="btn-secondary btn-sm" disabled={idx === 0} onClick={() => setIdx(idx - 1)}>Back</button>
-          <button type="button" className="btn-secondary btn-sm" onClick={() => idx + 1 < STEPS.length ? setIdx(idx + 1) : finish('completed')}>
-            {idx + 1 === STEPS.length ? 'Finish tour' : 'Next topic'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button type="button" className="btn-ghost btn-sm" onClick={() => { setIdx(0); setCollapsed(false); }}>Restart</button>
+            <button type="button" className="btn-secondary btn-sm" disabled={idx === 0} onClick={() => setIdx(idx - 1)}>Back</button>
+            <button type="button" className="btn-secondary btn-sm" onClick={() => idx + 1 < STEPS.length ? setIdx(idx + 1) : finish('completed')}>
+              {idx + 1 === STEPS.length ? 'Finish tour' : 'Next topic'}
+            </button>
+          </div>
         </div>
       </div>}
   </section>;

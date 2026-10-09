@@ -21,11 +21,12 @@ import { resetTutorial } from '../Tutorial';
 type Section = 'account' | 'appearance' | 'notifications' | 'assistant' | 'categories' | 'tags' | 'sync' | 'data' | 'security' | 'about';
 
 export function SettingsPage() {
-  const { theme, setTheme, premiumTheme, setPremiumTheme, toast, signOut: appSignOut } = useApp();
+  const { theme, setTheme, premiumTheme, setPremiumTheme, toast, signOut: appSignOut, syncNow, online, pendingOps } = useApp();
   const s = dbState();
   const profile = getProfile();
   const { confirm, confirmEl } = useConfirm();
   const [section, setSection] = useState<Section>('account');
+  const [refreshing, setRefreshing] = useState(false);
 
   const sections: { key: Section; label: string; icon: string }[] = [
     { key: 'account', label: 'Account & Profile', icon: 'user' },
@@ -64,6 +65,26 @@ export function SettingsPage() {
           {section === 'about' && <AboutSection />}
         </div>
       </div>
+
+      {/* Refresh — replaces the old pull-to-refresh gesture. Lives only in
+          Settings, pinned to the bottom-left, always visible. */}
+      <button
+        className="mt-4 flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50 active:scale-95 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+        disabled={refreshing}
+        onClick={async () => {
+          setRefreshing(true);
+          try { await syncNow(); await pull(); } finally { setRefreshing(false); }
+        }}
+        aria-label="Refresh data"
+        title={online ? 'Refresh data (sync now)' : 'Offline — retry when connected'}
+      >
+        <Icon name="refresh" className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+        Refresh
+        {pendingOps > 0 && (
+          <span className="rounded-full bg-amber-500/15 px-1.5 text-xs font-bold text-amber-600 dark:text-amber-300">{pendingOps}</span>
+        )}
+      </button>
+
       {confirmEl}
     </div>
   );

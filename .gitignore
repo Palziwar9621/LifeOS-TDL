@@ -34,3 +34,5 @@ Thumbs.db
 .omnirush/
 release/
 supabase/.temp/
+
+keystore.properties

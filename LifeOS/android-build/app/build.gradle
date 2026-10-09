@@ -214,7 +214,6 @@ dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
 
         implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.6.2'
-    implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
     implementation 'net.java.dev.jna:jna:5.18.1@aar'
     implementation 'com.alphacephei:vosk-android:0.3.75@aar'
     

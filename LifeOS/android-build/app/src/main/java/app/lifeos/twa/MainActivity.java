@@ -179,16 +179,6 @@ public class MainActivity extends Activity {
         web = findViewById(R.id.webview);
         splash = findViewById(R.id.splash);
 
-        // Pull-to-refresh: swipe down at the top of the page reloads the site.
-        // The site scrolls inside an inner <main>, so PageTopSwipeRefreshLayout
-        // relies on scroll reports from the page (see LifeOSNative bridge).
-        app.lifeos.twa.PageTopSwipeRefreshLayout swipe = findViewById(R.id.swipe);
-        swipe.attachWebView(web);
-        swipe.setOnRefreshListener(() -> {
-            web.reload();
-            handler.postDelayed(() -> swipe.setRefreshing(false), 1500);
-        });
-
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);          // IndexedDB / localStorage — LifeOS local cache
@@ -207,9 +197,6 @@ public class MainActivity extends Activity {
         // JS bridge: the web app pushes its upcoming alarms here; they ring
         // natively via AlarmManager even when this app is closed.
         web.addJavascriptInterface(new AlarmBridge(this), "LifeOSNative");
-        // JS bridge: page reports its scroll position so pull-to-refresh only
-        // fires when every scroll container is at the very top.
-        web.addJavascriptInterface(new ScrollReporter(swipe), "LifeOSScroll");
         // JS bridge: native speech recognition (WebView has no Web Speech API).
         speechBridge = new SpeechBridge(this);
         web.addJavascriptInterface(speechBridge, "LifeOSSpeech");
@@ -370,7 +357,6 @@ public class MainActivity extends Activity {
             web.removeJavascriptInterface("LifeOSSpeech");
             web.removeJavascriptInterface("LifeOSAssistant");
             web.removeJavascriptInterface("LifeOSNative");
-            web.removeJavascriptInterface("LifeOSScroll");
             web.stopLoading();
             web.destroy();
             web = null;
