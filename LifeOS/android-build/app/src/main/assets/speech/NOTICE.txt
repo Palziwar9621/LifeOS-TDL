@@ -1,0 +1,27 @@
+LifeOS bundled offline English speech recognition
+
+Model: vosk-model-small-en-us-0.15 (unmodified official archive)
+Publisher: Alpha Cephei / Vosk
+Copyright 2020 Alpha Cephei Inc (original model README)
+Source: https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
+License: Apache License, Version 2.0 (see LICENSE-APACHE-2.0.txt)
+Publisher's model/license listing: https://alphacephei.com/vosk/models
+The original model README is preserved inside the bundled archive and extracted
+alongside the model on first use. No model is downloaded by the installed app.
+Archive size: 41,205,931 bytes; extracted files: 70,898,967 bytes.
+Archive SHA-256: 30f26242c4eb449f948e42cb302dd7a686cb29a3423a8367f99ff41780942498
+
+Runtime: com.alphacephei:vosk-android:0.3.75
+Source: https://github.com/alphacep/vosk-api
+License: Apache License, Version 2.0
+
+Native binding: net.java.dev.jna:jna:5.18.1
+Source: https://github.com/java-native-access/jna
+License: dual LGPL 2.1 or later / Apache License, Version 2.0.
+LifeOS uses JNA under its Apache License, Version 2.0 option.
+Upstream JNA native components retain their bundled third-party notices.
+
+LifeOS integration changes are in the application code, not the model archive.
+Recognition uses 16 kHz mono PCM locally; no PCM or transcript is sent to a
+speech recognition service. Application-level commands retain their own network
+behavior. Android TTS voice data/engines are managed separately by the device.

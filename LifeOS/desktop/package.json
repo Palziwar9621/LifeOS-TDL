@@ -1,6 +1,6 @@
 {
   "name": "lifeos-desktop",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "LifeOS desktop app — wraps the LifeOS PWA for Windows",
   "main": "main.js",
   "scripts": {

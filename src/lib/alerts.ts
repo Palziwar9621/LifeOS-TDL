@@ -46,7 +46,9 @@ export function alertsSupported(): boolean {
  * native side owns it; the WebView itself has no Notification API). */
 export function alertPermission(): NotificationPermission | 'unsupported' {
   if (typeof window === 'undefined') return 'unsupported';
-  if ((window as any).LifeOSNative?.notify) return 'granted';
+  if ((window as any).LifeOSNative?.notify) {
+    return (window as any).LifeOSNative.notificationsAllowed?.() === false ? 'denied' : 'granted';
+  }
   if (typeof Notification === 'undefined') return 'unsupported';
   return Notification.permission;
 }
@@ -54,7 +56,7 @@ export function alertPermission(): NotificationPermission | 'unsupported' {
 /** Ask for notification permission where applicable (Android shell: already granted natively). */
 export async function requestAlertPermission(): Promise<NotificationPermission | 'unsupported'> {
   if (typeof window === 'undefined') return 'unsupported';
-  if ((window as any).LifeOSNative?.notify) return 'granted';
+  if ((window as any).LifeOSNative?.notify) return alertPermission();
   if (typeof Notification === 'undefined') return 'unsupported';
   try { return await Notification.requestPermission(); } catch { return Notification.permission; }
 }

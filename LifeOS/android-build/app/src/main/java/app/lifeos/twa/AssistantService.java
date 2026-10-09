@@ -5,30 +5,15 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
-import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.os.Bundle;
+import android.content.pm.PackageManager;
+import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
-import android.speech.RecognitionListener;
-import android.speech.RecognizerIntent;
-import android.speech.SpeechRecognizer;
-
-import java.util.ArrayList;
 import java.util.Locale;
 
-/**
- * Background wake-word listener.
- *
- * A foreground service (foregroundServiceType="microphone") that keeps a
- * SpeechRecognizer running even when the app is closed. On "Hey LifeOS" it
- * raises a full-screen intent notification — the user taps it (Android
- * requires a touch for background activation) and the app opens straight
- * into command mode.
- *
- * Battery-friendly: recognition restarts only on end/error, and the whole
- * service is started/stopped from the web app via LifeOSAssistantBridge.
- */
+/** Explicitly enabled background wake using the same local PCM/Vosk engine as the page. */
 public class AssistantService extends Service {
     private static final String CHANNEL = "lifeos_assistant";
     private static final int NOTIF_ID = 2001;
@@ -36,163 +21,160 @@ public class AssistantService extends Service {
     public static final String KEY_ENABLED = "wake_enabled";
     public static final String KEY_WAKE_WORD = "wake_word";
 
-    private SpeechRecognizer recognizer;
+    private final Handler handler = new Handler(android.os.Looper.getMainLooper());
+    private EmbeddedSpeechEngine.Session recognizer;
     private String wakeWord = "hey lifeos";
-    private long lastWakeFiredAt = 0;
-    private long pausedUntil = 0;
-    private boolean appForeground = false;
-    private final android.os.Handler handler = new android.os.Handler(getMainLooper());
-
+    private int generation;
+    private boolean started;
+    private boolean destroyed;
+    private boolean sessionEnded;
+    private final Runnable resume = this::startListening;
     private static AssistantService instance;
+    private static boolean appForeground = false;
 
-    /** The wake-word listener is ONLY for when the app is closed. While the
-     *  app is open its recognizer must be destroyed — otherwise it holds the
-     *  mic and the in-app idea recorder fails with "LifeOS is recording". */
-    public static void setAppForeground(boolean fg) {
-        appForegroundStatic = fg;
-        if (instance == null) return;
-        instance.appForeground = fg;
-        if (fg) instance.pauseListening();
-        else instance.handler.postDelayed(instance::startListening, 400);
+    /** Called on the activity's main looper, before foreground microphone use. */
+    public static void setAppForeground(boolean foreground) {
+        appForeground = foreground;
+        AssistantService service = instance;
+        if (service == null) return;
+        service.pauseListening();
+        if (foreground) service.updateNotification("Wake listener paused while LifeOS is open");
+        else if (!service.sessionEnded) service.handler.postDelayed(service.resume, 750);
     }
-    private static boolean appForegroundStatic = false;
 
-    @Override
-    public void onCreate() {
+    @Override public void onCreate() {
         super.onCreate();
         instance = this;
-        appForeground = appForegroundStatic;
-        NotificationChannel ch = new NotificationChannel(CHANNEL, "Voice assistant", NotificationManager.IMPORTANCE_LOW);
-        ch.setDescription("Listens for your wake word");
-        getSystemService(NotificationManager.class).createNotificationChannel(ch);
-        startForeground(NOTIF_ID, buildNotification());
-
-        SharedPreferences p = getSharedPreferences(PREFS, MODE_PRIVATE);
-        wakeWord = p.getString(KEY_WAKE_WORD, "hey lifeos");
-        if (!appForeground) startListening();
+        if (Build.VERSION.SDK_INT >= 26) {
+            NotificationChannel channel = new NotificationChannel(CHANNEL, "Voice assistant", NotificationManager.IMPORTANCE_LOW);
+            channel.setDescription("Optional on-device wake session");
+            channel.setSound(null, null);
+            channel.enableVibration(false);
+            getSystemService(NotificationManager.class).createNotificationChannel(channel);
+        }
+        // Listening starts only after onStartCommand checks explicit opt-in and
+        // permission. Merely creating or stopping this service cannot take the mic.
     }
 
-    private Notification buildNotification() {
+    private Notification notification(String detail) {
         Intent open = getPackageManager().getLaunchIntentForPackage(getPackageName());
-        PendingIntent pi = PendingIntent.getActivity(this, 0, open,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        return new Notification.Builder(this, CHANNEL)
-                .setContentTitle("LifeOS is listening")
-                .setContentText("Say \"" + wakeWord + "\" to give a command")
+        Notification.Builder builder = Build.VERSION.SDK_INT >= 26
+                ? new Notification.Builder(this, CHANNEL) : new Notification.Builder(this);
+        builder.setContentTitle("LifeOS voice assistant")
+                .setContentText(detail)
                 .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-                .setOngoing(true)
-                .setContentIntent(pi)
-                .build();
+                .setOnlyAlertOnce(true)
+                .setOngoing(!sessionEnded);
+        if (open != null) builder.setContentIntent(PendingIntent.getActivity(this, 0, open,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
+        return builder.build();
+    }
+
+    private void updateNotification(String detail) {
+        if (started && !destroyed) getSystemService(NotificationManager.class).notify(NOTIF_ID, notification(detail));
+    }
+
+    private boolean enabled() {
+        return getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(KEY_ENABLED, false);
     }
 
     private void startListening() {
-        if (appForeground) return; // app is open — the mic belongs to the app
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) return;
-        // Pause window after a wake event: don't re-trigger while the popup
-        // is up (and give the user time to speak the command).
-        if (System.currentTimeMillis() < pausedUntil) {
-            new android.os.Handler(getMainLooper()).postDelayed(this::startListening, 1000);
+        handler.removeCallbacks(resume);
+        if (destroyed || !started || sessionEnded || appForeground || recognizer != null) return;
+        if (!enabled() || checkSelfPermission("android.permission.RECORD_AUDIO") != PackageManager.PERMISSION_GRANTED) {
+            stopSelf();
             return;
         }
-        if (recognizer == null) recognizer = SpeechRecognizer.createSpeechRecognizer(this);
-
-        recognizer.setRecognitionListener(new RecognitionListener() {
-            @Override public void onResults(Bundle results) {
-                ArrayList<String> list = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-                if (list != null) for (String t : list) if (heardWake(t)) return;
-                restart();
+        final int token = ++generation;
+        updateNotification("Preparing offline wake model…");
+        recognizer = EmbeddedSpeechEngine.start(this, new EmbeddedSpeechEngine.Listener() {
+            private boolean current() { return !destroyed && token == generation && !appForeground && enabled(); }
+            @Override public void onReady(boolean aec) {
+                if (current()) updateNotification("Offline wake: say \"" + wakeWord + "\"");
             }
-            @Override public void onError(int error) { restart(); }
-            @Override public void onReadyForSpeech(Bundle params) {}
-            @Override public void onBeginningOfSpeech() {}
-            @Override public void onRmsChanged(float rmsdB) {}
-            @Override public void onBufferReceived(byte[] buffer) {}
-            @Override public void onEndOfSpeech() {}
-            @Override public void onPartialResults(Bundle partial) {
-                ArrayList<String> list = partial.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-                if (list != null) for (String t : list) if (heardWake(t)) return;
+            @Override public void onText(String text, boolean isFinal) {
+                // Silence leaves one PCM session open, without recognizer restart
+                // tones or requests to a network recognition service.
+                if (current() && !text.isEmpty()) checkWake(text);
             }
-            @Override public void onEvent(int eventType, Bundle params) {}
+            @Override public void onError(String error) {
+                if (current()) finishSession("Wake stopped (" + error + "); open LifeOS to re-enable");
+            }
         });
-
-        Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toString());
-        // On-device recognition does not play the network service's start/stop
-        // blips ("tui"/"tunun") — with a restart loop they'd beep every few
-        // seconds. Falls back to the network recognizer silently when no
-        // on-device model is installed.
-        i.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true);
-        recognizer.startListening(i);
     }
 
-    private boolean heardWake(String t) {
-        if (t == null) return false;
-        if (!t.toLowerCase().contains(wakeWord)) return false;
-        long now = System.currentTimeMillis();
-        if (now - lastWakeFiredAt < 20_000) return true; // cooldown: swallow repeats
-        lastWakeFiredAt = now;
-        // Wake word heard — surface a full-screen notification (opens the app
-        // into command mode). Android requires user interaction to launch
-        // activities from the background; the notification is that touch.
-        NotificationManager nm = getSystemService(NotificationManager.class);
-        Intent open = getPackageManager().getLaunchIntentForPackage(getPackageName());
-        if (open != null) {
-            open.putExtra("voice_command_mode", true);
-            PendingIntent pi = PendingIntent.getActivity(this, 1, open,
-                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            Notification n = new Notification.Builder(this, CHANNEL)
-                    .setContentTitle("Listening for your command…")
-                    .setContentText("Tap to speak to LifeOS")
-                    .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-                    .setFullScreenIntent(pi, true)
-                    .setAutoCancel(true)
-                    .build();
-            nm.notify(NOTIF_ID + 1, n);
+    private boolean checkWake(String text) {
+        if ((" " + SpeechText.normalize(SpeechText.wakeSpelling(text)) + " ")
+                .contains(" " + SpeechText.normalize(wakeWord) + " ")) {
+            pauseListening();
+            sessionEnded = true;
+            Intent open = getPackageManager().getLaunchIntentForPackage(getPackageName());
+            if (open != null) {
+                // A tap opens the app. Do not launch a microphone session or a
+                // full-screen activity unexpectedly from a background callback.
+                PendingIntent pi = PendingIntent.getActivity(this, 1, open,
+                        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                Notification.Builder builder = Build.VERSION.SDK_INT >= 26
+                        ? new Notification.Builder(this, CHANNEL) : new Notification.Builder(this);
+                getSystemService(NotificationManager.class).notify(NOTIF_ID + 1, builder
+                        .setContentTitle("LifeOS heard your wake word")
+                        .setContentText("Tap to open LifeOS, then tap the microphone")
+                        .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+                        .setContentIntent(pi).setOnlyAlertOnce(true).setAutoCancel(true).build());
+            }
+            stopSelf();
+            return true;
         }
-        // Pause the loop so the popup isn't instantly re-triggered.
-        pausedUntil = now + 20_000;
-        if (recognizer != null) { try { recognizer.stopListening(); } catch (Exception ignored) {} }
-        return true;
+        return false;
     }
 
-    /** Destroy the recognizer and cancel every pending restart — releases
-     *  the mic immediately (used when the app comes to the foreground). */
+    private void finishSession(String reason) {
+        pauseListening();
+        sessionEnded = true;
+        updateNotification(reason);
+        // Retain an honest status notification, but release the foreground
+        // microphone service. Explicit opt-in is needed to start another session.
+        stopForeground(false);
+        stopSelf();
+    }
+
     private void pauseListening() {
-        handler.removeCallbacksAndMessages(null);
-        if (recognizer != null) {
-            try { recognizer.destroy(); } catch (Exception ignored) {}
-            recognizer = null;
-        }
+        handler.removeCallbacks(resume);
+        ++generation;
+        EmbeddedSpeechEngine.Session old = recognizer;
+        recognizer = null;
+        if (old != null) old.stop();
     }
 
-    private void restart() {
-        if (recognizer != null) {
-            try { recognizer.destroy(); } catch (Exception ignored) {}
-            recognizer = null;
-        }
-        // Recreate fresh: ERROR_CLIENT(5)/busy(8) mean the old instance is
-        // wedged — a short delay plus a new object clears it.
-        handler.postDelayed(this::startListening, 1200);
-    }
-
-    @Override
-    public int onStartCommand(Intent intent, int flags, int startId) {
-        if (intent != null && "stop".equals(intent.getAction())) {
+    @Override public int onStartCommand(Intent intent, int flags, int startId) {
+        if (intent == null || "stop".equals(intent.getAction()) || !enabled()
+                || checkSelfPermission("android.permission.RECORD_AUDIO") != PackageManager.PERMISSION_GRANTED) {
+            pauseListening();
+            getSystemService(NotificationManager.class).cancel(NOTIF_ID);
+            getSystemService(NotificationManager.class).cancel(NOTIF_ID + 1);
             stopSelf();
             return START_NOT_STICKY;
         }
-        return START_STICKY;
+        SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        String configured = prefs.getString(KEY_WAKE_WORD, "hey lifeos");
+        wakeWord = configured == null || configured.trim().isEmpty() ? "hey lifeos" : configured.trim().toLowerCase(Locale.ROOT);
+        try {
+            startForeground(NOTIF_ID, notification(appForeground
+                    ? "Wake listener paused while LifeOS is open" : "Starting optional wake session"));
+            started = true;
+            sessionEnded = false;
+            startListening();
+        } catch (RuntimeException e) { stopSelf(); }
+        return START_NOT_STICKY;
     }
 
-    @Override
-    public void onDestroy() {
+    @Override public void onDestroy() {
+        destroyed = true;
+        pauseListening();
         if (instance == this) instance = null;
         handler.removeCallbacksAndMessages(null);
-        if (recognizer != null) { try { recognizer.destroy(); } catch (Exception ignored) {} }
         super.onDestroy();
     }
 
-    @Override
-    public IBinder onBind(Intent intent) { return null; }
+    @Override public IBinder onBind(Intent intent) { return null; }
 }

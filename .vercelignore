@@ -1,0 +1,15 @@
+# Deploy the web app only; never upload signing material or native build trees.
+.git
+.omnirush
+.freebuff
+.env*
+*.keystore
+*.jks
+LifeOS
+release
+marketing
+tests
+supabase/.temp
+node_modules
+dist
+test.json

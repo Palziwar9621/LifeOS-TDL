@@ -126,8 +126,6 @@ export function AuthScreen() {
       } else if (mode === 'signup') {
         const r = await signUp(email, password, username);
         if (!r.ok) throw new Error(r.error ?? 'Sign up failed');
-        // New account — clear any stale 'done' flag so the tour shows.
-        try { localStorage.removeItem('lifeos.tutorial.done'); } catch { /* ignore */ }
         if (r.needsEmailConfirm) {
           setInfo('Account created! We sent a confirmation link to your email — open it, then sign in here. Didn\'t get it? Use "Forgot password" to re-send.');
           setMode('login');
@@ -165,7 +163,7 @@ export function AuthScreen() {
         {mode === 'login' ? t('auth.welcomeSub') : mode === 'signup' ? 'One account — every device.' : 'We\'ll email you a reset link.'}
       </p>
 
-      <form className="mt-6 space-y-3 text-left" onSubmit={submit}>
+      <form className="mt-6 w-full space-y-3 text-left" onSubmit={submit}>
         {mode === 'signup' && (
           <div>
             <label className="label">Username</label>
@@ -194,12 +192,11 @@ export function AuthScreen() {
         </button>
       </form>
 
-      <div className="mt-4 text-sm">
+      <div className="mt-4 w-full space-y-3 text-sm">
         {mode === 'login' && (
           <>
-            <button className="text-brand-600 dark:text-brand-300 font-semibold" onClick={() => setMode('signup')}>{t('auth.createAccount')}</button>
-            <span className="mx-2 muted">·</span>
-            <button className="muted" onClick={() => setMode('forgot')}>{t('auth.forgot')}</button>
+            <button type="button" className="btn-secondary w-full" disabled={busy} onClick={switchToSignup}>Create new account</button>
+            <button type="button" className="muted" disabled={busy} onClick={() => { setErr(''); setInfo(''); setNoAccountAlso(false); setMode('forgot'); }}>{t('auth.forgot')}</button>
           </>
         )}
         {mode !== 'login' && (
@@ -208,7 +205,7 @@ export function AuthScreen() {
       </div>
 
       <div className="divider my-5" />
-      <button className="btn-secondary w-full" onClick={() => { continueAsGuest(); toast('Guest mode — your data stays on this device only', 'info'); }}>
+      <button type="button" className="btn-secondary w-full" disabled={busy} onClick={() => { continueAsGuest(); toast('Guest mode — your data stays on this device only', 'info'); }}>
         {t('auth.guest')}
       </button>
       <p className="mt-2 text-xs muted text-left">

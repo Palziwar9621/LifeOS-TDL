@@ -1,326 +1,389 @@
 package app.lifeos.twa;
 
 import android.app.Activity;
-import android.content.ActivityNotFoundException;
-import android.media.AudioAttributes;
-import android.media.AudioFocusRequest;
-import android.media.AudioManager;
-import android.content.Context;
-import android.content.Intent;
-import android.speech.RecognizerIntent;
-import android.speech.SpeechRecognizer;
-import android.speech.RecognitionListener;
-import android.speech.tts.TextToSpeech;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.SystemClock;
+import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
 import android.webkit.JavascriptInterface;
 
-import java.util.ArrayList;
 import java.util.Locale;
 
-/**
- * Exposed to the web app as window.LifeOSSpeech.
- *
- * The Android WebView does not implement the Web Speech API, so voice
- * commands would silently never work in the APK. This bridge runs Android's
- * native speech recognition (the same engine Google keyboard/Assistant use)
- * and feeds the final transcript back to the page via a JS callback.
- *
- * Lifecycle per utterance: the page calls listen() -> the system mic dialog
- * opens -> results arrive in onSpeechResult(text) / onSpeechError(code).
- */
+/** Native WebView speech. All mutable session state is confined to the main looper. */
 public class SpeechBridge {
+    private static final int REQ_MIC = 2002;
     private final Activity activity;
-    private static final int REQ = 4711;
-    private SpeechRecognizer recognizer;
-    private boolean continuous = false;
-
-    // Native TTS: the Android WebView does NOT implement window.speechSynthesis,
-    // so the assistant could hear commands but never reply out loud. This fills
-    // the gap; the web layer calls it when window.speechSynthesis is missing.
-    private TextToSpeech tts;
-    private boolean ttsReady = false;
-    private boolean micWasContinuous = false;
-    private boolean ttsInitializing = false;
-    private String pendingSpeech;
+    private final Handler handler;
+    private EmbeddedSpeechEngine.Session recognizer;
+    private int recognitionGeneration;
+    private boolean continuous;
+    private volatile boolean destroyed;
+    private boolean foreground;
+    private boolean webMicrophoneInUse;
     private String pendingListenMode;
+    private boolean permissionPending;
+    private boolean permissionGranted;
+    private Runnable listenTimeout;
+    private boolean speechBeginning;
+    private boolean outputMuted;
+    private String playbackText = "";
+    private long echoUntil;
+    private volatile boolean echoCancellation;
 
-    // Beep suppression WITHOUT muting STREAM_MUSIC — muting that stream also
-    // muted our own TTS replies (they share it), which made the assistant go
-    // silent while the recognition beeps kept playing on some devices.
-    //
-    // Instead we use the proper mechanism: a transient audio focus request
-    // with ATTRIBUTE_USAGE=ASSISTANT. Google's recognition service ducks/
-    // silences its own UI sounds when another ASSISTANT-usage client holds
-    // focus, and TTS replies remain fully audible because nothing is muted.
-    // A watchdog releases focus after 15s no matter what, so focus can never
-    // be held forever (a stuck focus killed playback once already).
-    private AudioFocusRequest focusRequest;
-    private boolean holdingFocus = false;
-    private final Runnable releaseFocusRunnable = this::releaseBeepFocus;
-
-    private void requestBeepSuppression() {
-        requestBeepSuppression(false);
-    }
-
-    /**
-     * Hold the focus for one listen cycle (oneShot=true) OR for the entire
-     * continuous session (oneShot=false). Holding ACROSS utterances is what
-     * actually kills the blips in continuous mode: Google's recognizer plays
-     * its start/stop blip on every restart, and the old per-cycle focus let
-     * a fresh blip through on each restart. While continuous, the watchdog
-     * re-requests focus every 14s instead of releasing it.
-     */
-    private void requestBeepSuppression(boolean oneShot) {
-        activity.runOnUiThread(() -> {
-            try {
-                AudioManager am = (AudioManager) activity.getSystemService(Context.AUDIO_SERVICE);
-                if (am == null) return;
-                if (focusRequest == null) {
-                    focusRequest = new AudioFocusRequest.Builder(oneShot
-                        ? AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
-                        : AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
-                        .setAudioAttributes(new AudioAttributes.Builder()
-                             .setUsage(AudioAttributes.USAGE_ASSISTANT)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                            .build())
-                        .setOnAudioFocusChangeListener(focusChange -> { /* transient; nothing to pause */ })
-                        .build();
-                }
-                if (!holdingFocus) {
-                    holdingFocus = am.requestAudioFocus(focusRequest) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
-                }
-                android.os.Handler h = new android.os.Handler(activity.getMainLooper());
-                h.removeCallbacks(releaseFocusRunnable);
-                if (oneShot) {
-                    // Watchdog: never hold focus longer than 15s per listen cycle.
-                    h.postDelayed(releaseFocusRunnable, 15_000);
-                } else {
-                    // Continuous session: renew silently every 14s so focus ISN'T
-                    // released between utterances (that release let each restart
-                    // blip back through).
-                    h.postDelayed(() -> { if (continuous && holdingFocus) requestBeepSuppression(false); }, 14_000);
-                }
-            } catch (Exception ignored) {}
-        });
-    }
-
-    private void releaseBeepFocus() {
-        activity.runOnUiThread(() -> {
-            try {
-                // In continuous mode keep the session focus held — releasing it
-                // between utterances lets the recognizer's restart blip play.
-                if (continuous && holdingFocus) return;
-                if (holdingFocus && focusRequest != null) {
-                    AudioManager am = (AudioManager) activity.getSystemService(Context.AUDIO_SERVICE);
-                    if (am != null) am.abandonAudioFocusRequest(focusRequest);
-                    holdingFocus = false;
-                }
-                android.os.Handler h = new android.os.Handler(activity.getMainLooper());
-                h.removeCallbacks(releaseFocusRunnable);
-            } catch (Exception ignored) {}
-        });
-    }
+    private TextToSpeech tts;
+    // "initializing" is a usable queued state, not evidence of a missing engine.
+    private volatile String ttsState = "initializing";
+    private boolean ttsInitializing;
+    private int ttsGeneration;
+    private Runnable ttsInitTimeout;
+    private String pendingSpeech;
+    private String utterance;
+    private long utteranceSequence;
 
     public SpeechBridge(Activity activity) {
         this.activity = activity;
-        activity.runOnUiThread(this::initTts);
+        handler = new Handler(activity.getMainLooper());
+        handler.post(this::initTts);
+    }
+
+    private boolean canUsePage() {
+        return !destroyed && foreground && !activity.isFinishing() && !activity.isDestroyed()
+                && (!(activity instanceof MainActivity) || ((MainActivity) activity).isTrustedPage());
     }
 
     private void initTts() {
-        if (tts != null || ttsInitializing) return;
+        if (destroyed || tts != null || ttsInitializing) return;
         ttsInitializing = true;
-        tts = new TextToSpeech(activity.getApplicationContext(), status -> {
-            ttsInitializing = false;
-            ttsReady = status == TextToSpeech.SUCCESS;
-            if (ttsReady) {
-                try { tts.setLanguage(Locale.getDefault()); } catch (Exception ignored) {}
-                if (pendingSpeech != null) { String text = pendingSpeech; pendingSpeech = null; speakInternal(text); }
-            } else if (pendingSpeech != null) {
-                pendingSpeech = null;
-                fire("onSpeakEnd", "unavailable");
-            }
-        });
+        ttsState = "initializing";
+        final int generation = ++ttsGeneration;
+        ttsInitTimeout = () -> onTtsInitialized(generation, TextToSpeech.ERROR);
+        handler.postDelayed(ttsInitTimeout, 15_000);
+        try {
+            // Always post the callback: some engines finish before the constructor
+            // returns, while others call back on a binder thread.
+            tts = new TextToSpeech(activity.getApplicationContext(), status ->
+                    handler.post(() -> onTtsInitialized(generation, status)));
+        } catch (Exception e) {
+            onTtsInitialized(generation, TextToSpeech.ERROR);
+        }
     }
 
-    /** Speak text out loud (web falls back here when speechSynthesis is absent). */
+    private void onTtsInitialized(int generation, int status) {
+        if (destroyed || generation != ttsGeneration) return;
+        ++ttsGeneration;
+        if (ttsInitTimeout != null) handler.removeCallbacks(ttsInitTimeout);
+        ttsInitTimeout = null;
+        ttsInitializing = false;
+        boolean ready = status == TextToSpeech.SUCCESS && tts != null;
+        if (ready) {
+            try {
+                int language = tts.setLanguage(Locale.getDefault());
+                ready = language != TextToSpeech.LANG_MISSING_DATA
+                        && language != TextToSpeech.LANG_NOT_SUPPORTED;
+                tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                    @Override public void onStart(String id) {}
+                    @Override public void onDone(String id) { handler.post(() -> finishSpeech(id, "done")); }
+                    @Override public void onError(String id) { handler.post(() -> finishSpeech(id, "error")); }
+                    @Override public void onStop(String id, boolean interrupted) {
+                        handler.post(() -> finishSpeech(id, "cancelled"));
+                    }
+                });
+            } catch (Exception e) { ready = false; }
+        }
+        ttsState = ready ? "ready" : "unavailable";
+        if (!ready && tts != null) {
+            try { tts.shutdown(); } catch (Exception ignored) {}
+            tts = null;
+        }
+        if (pendingSpeech != null) {
+            String text = pendingSpeech;
+            pendingSpeech = null;
+            if (ready && canUsePage()) speakInternal(text);
+            else if (canUsePage()) {
+                fire("onSpeakEnd", "unavailable");
+            }
+        }
+    }
+
+    @JavascriptInterface
+    public boolean ttsAvailable() { return !"unavailable".equals(ttsState); }
+
+    @JavascriptInterface
+    public String getTtsState() { return ttsState; }
+
     @JavascriptInterface
     public String speak(String text) {
-        if (text == null || text.isEmpty()) return "noop";
-        activity.runOnUiThread(() -> {
-            releaseBeepFocus(); // replies must be fully audible
-            if (!ttsReady) { pendingSpeech = text; initTts(); }
-            else speakInternal(text);
+        if (text == null || text.trim().isEmpty()) return "noop";
+        handler.post(() -> {
+            if (!canUsePage()) return;
+            // Latest request wins, like QUEUE_FLUSH. Invalidate the previous ID
+            // BEFORE stop(), so late onDone/onStop cannot finish the new reply.
+            stopSpeech(false);
+            playbackText = text;
+            speechBeginning = false;
+            // Keep app-owned PCM running for spoken interruption. Reset only
+            // the decoder's previous phrase; there is no microphone restart.
+            if (recognizer != null) recognizer.resetDecoder();
+            if (!"ready".equals(ttsState)) {
+                pendingSpeech = text;
+                initTts();
+            } else speakInternal(text);
         });
         return "speaking";
     }
 
     private void speakInternal(String text) {
-        releaseBeepFocus();
-        if (tts == null || !ttsReady) { fire("onSpeakEnd", "unavailable"); return; }
-        // Pause recognition while talking (anti-feedback), resume after.
-        micWasContinuous = continuous;
-        if (recognizer != null) { try { recognizer.stopListening(); } catch (Exception ignored) {} }
-        tts.setOnUtteranceProgressListener(new android.speech.tts.UtteranceProgressListener() {
-            @Override public void onStart(String id) {}
-            @Override public void onDone(String id) {
-                if (micWasContinuous) restartIfContinuous("continuous");
-                fire("onSpeakEnd", "done");
+        if (!canUsePage()) return;
+        if (tts == null || !"ready".equals(ttsState)) {
+            fire("onSpeakEnd", "unavailable");
+            return;
+        }
+        utterance = "lifeos-" + (++utteranceSequence);
+        playbackText = text;
+        try {
+            if (tts.speak(text, TextToSpeech.QUEUE_FLUSH, new Bundle(), utterance) == TextToSpeech.ERROR) {
+                finishSpeech(utterance, "error");
             }
-            @Override public void onError(String id) {
-                if (micWasContinuous) restartIfContinuous("continuous");
-                fire("onSpeakEnd", "error");
-            }
-        });
-        Bundle params = new Bundle();
-        params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f);
-        tts.speak(text, TextToSpeech.QUEUE_FLUSH, params, "lifeos" + System.currentTimeMillis());
+        } catch (Exception e) { finishSpeech(utterance, "error"); }
+    }
+
+    private void finishSpeech(String id, String status) {
+        if (destroyed || id == null || !id.equals(utterance)) return;
+        utterance = null;
+        echoUntil = SystemClock.elapsedRealtime() + 800;
+        fire("onSpeakEnd", status);
+    }
+
+    private void stopSpeech(boolean notify) {
+        boolean hadSpeech = pendingSpeech != null || utterance != null;
+        pendingSpeech = null;
+        utterance = null;
+        if (hadSpeech) echoUntil = SystemClock.elapsedRealtime() + 800;
+        if (tts != null) { try { tts.stop(); } catch (Exception ignored) {} }
+        if (notify && hadSpeech) fire("onSpeakEnd", "cancelled");
     }
 
     @JavascriptInterface
     public String stopSpeak() {
-        activity.runOnUiThread(() -> {
-            if (tts != null) { try { tts.stop(); } catch (Exception ignored) {} }
-        });
+        // The web caller resolves its cancelled speech synchronously. A later
+        // onSpeakEnd would hit the global callback for its replacement reply.
+        handler.post(() -> stopSpeech(false));
         return "stopped";
     }
 
     @JavascriptInterface
-    public boolean ttsAvailable() {
-        return true; // engine installs/initializes lazily on first speak()
-    }
-
-    /** One-shot listen: opens native recognition; result lands in the JS callback. */
-    @JavascriptInterface
     public String listen() {
-        // Must run on the UI thread. Ensure mic permission first.
-        activity.runOnUiThread(() -> {
-            if (activity.checkSelfPermission("android.permission.RECORD_AUDIO") != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                activity.requestPermissions(new String[]{"android.permission.RECORD_AUDIO"}, 2002);
-                fire("onSpeechError", "9");
-                return;
-            }
-            startListening(null);
-        });
+        handler.post(() -> requestListening(false));
         return "started";
     }
 
     @JavascriptInterface
-    public boolean isAvailable() {
-        return SpeechRecognizer.isRecognitionAvailable(activity.getApplicationContext());
-    }
-
-    /** Continuous path (used when the page wants wake-word mode). */
-    @JavascriptInterface
     public String startContinuous() {
-        activity.runOnUiThread(() -> {
-            continuous = true;
-            if (activity.checkSelfPermission("android.permission.RECORD_AUDIO") != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                pendingListenMode = "continuous";
-                activity.requestPermissions(new String[]{"android.permission.RECORD_AUDIO"}, 2002);
-                return;
-            }
-            startListening("continuous");
-        });
+        handler.post(() -> requestListening(true));
         return "started";
     }
 
     @JavascriptInterface
     public String stopContinuous() {
-        activity.runOnUiThread(() -> {
-            continuous = false;          // let releaseBeepFocus() actually abandon focus now
-            pendingListenMode = null;
-            releaseBeepFocus();
-            if (recognizer != null) {
-                try { recognizer.stopListening(); } catch (Exception ignored) {}
-                try { recognizer.destroy(); } catch (Exception ignored) {}
-                recognizer = null;
-            }
+        handler.post(this::stopRecognitionSession);
+        return "stopped";
+    }
+
+    /** Optional explicit cancel API; stopContinuous still cancels one-shot listens too. */
+    @JavascriptInterface
+    public String cancel() {
+        handler.post(() -> {
+            stopRecognitionSession();
+            stopSpeech(false);
         });
         return "stopped";
     }
 
-    public void onPermissionResult(int requestCode, int[] grantResults) {
-        if (requestCode != 2002 || pendingListenMode == null) return;
-        String mode = pendingListenMode;
-        pendingListenMode = null;
-        if (grantResults != null && grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            startListening(mode);
-        } else {
-            continuous = false;
-            fire("onSpeechError", "9");
-        }
+    @JavascriptInterface
+    public boolean isAvailable() {
+        return !destroyed; // Bundled engine; actual load/mic failures are asynchronous.
     }
 
-    /** Restart a dead session (continuous mode): Android ends recognition
-     *  after every utterance, so without this the mic dies after one command. */
-    private void restartIfContinuous(String mode) {
-        if (!continuous) return;
-        activity.runOnUiThread(() -> {
-            if (recognizer != null) { try { recognizer.destroy(); } catch (Exception ignored) {} recognizer = null; }
-            new android.os.Handler(activity.getMainLooper()).postDelayed(() -> startListening("continuous"), 300);
-        });
-    }
+    @JavascriptInterface
+    public String recognitionEngine() { return "vosk-en-us-0.15"; }
 
-    private void startListening(String mode) {
-        try {
-            if (!SpeechRecognizer.isRecognitionAvailable(activity.getApplicationContext())) {
-                fire("onSpeechError", "not_available");
-                return;
+    /** Web mic ducking gates text, never a system audio stream or PCM capture. */
+    @JavascriptInterface
+    public void setMuted(boolean muted) { handler.post(() -> outputMuted = muted); }
+
+    @JavascriptInterface
+    public boolean echoCancellationAvailable() { return echoCancellation; }
+
+    private void requestListening(boolean requestedContinuous) {
+        if (!canUsePage()) return;
+        if (webMicrophoneInUse) { fire("onSpeechError", "microphone_in_use"); return; }
+        if (recognizer != null && continuous == requestedContinuous) return;
+        continuous = requestedContinuous;
+        // Explicit reactivation can interrupt playback. An already-active
+        // continuous session remains alive throughout native TTS.
+        stopSpeech(true);
+        cancelRecognition();
+        if (activity.checkSelfPermission("android.permission.RECORD_AUDIO") != PackageManager.PERMISSION_GRANTED) {
+            pendingListenMode = requestedContinuous ? "continuous" : "once";
+            if (!permissionPending) {
+                permissionPending = true;
+                activity.requestPermissions(new String[]{"android.permission.RECORD_AUDIO"}, REQ_MIC);
             }
-            if (recognizer == null) recognizer = SpeechRecognizer.createSpeechRecognizer(activity.getApplicationContext());
+            return;
+        }
+        startListening();
+    }
 
-            recognizer.setRecognitionListener(new RecognitionListener() {
-                @Override public void onResults(Bundle results) {
-                    ArrayList<String> list = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-                    releaseBeepFocus();
-                    if (list != null && !list.isEmpty()) fire("onSpeechResult", list.get(0));
-                    else fire("onSpeechError", "no_match");
-                    if (mode == null) { try { recognizer.destroy(); } catch (Exception ignored) {} recognizer = null; }
-                    else restartIfContinuous(mode);
+    private void startListening() {
+        if (!canUsePage() || webMicrophoneInUse || recognizer != null) return;
+        if (activity.checkSelfPermission("android.permission.RECORD_AUDIO") != PackageManager.PERMISSION_GRANTED) {
+            endRecognitionError("9");
+            return;
+        }
+        cancelListenTimeout();
+        speechBeginning = false;
+        final int generation = ++recognitionGeneration;
+        fire("onSpeechState", "loading");
+        recognizer = EmbeddedSpeechEngine.start(activity, new EmbeddedSpeechEngine.Listener() {
+            private boolean current() { return !destroyed && generation == recognitionGeneration && canUsePage(); }
+            @Override public void onReady(boolean aec) {
+                if (!current()) return;
+                echoCancellation = aec;
+                fire("onSpeechReady", "");
+                if (!continuous) {
+                    listenTimeout = () -> { if (current()) endRecognitionError("6"); };
+                    handler.postDelayed(listenTimeout, 20_000);
                 }
-                @Override public void onError(int error) {
-                    releaseBeepFocus();
-                    fire("onSpeechError", String.valueOf(error)); // 6=no speech, 7=no match, 8=busy
-                    if (mode == null) { try { recognizer.destroy(); } catch (Exception ignored) {} recognizer = null; }
-                    else restartIfContinuous(mode);
+            }
+            @Override public void onText(String text, boolean isFinal) {
+                if (!current()) return;
+                boolean outputActive = pendingSpeech != null || utterance != null || outputMuted;
+                boolean accepted = !text.isEmpty() && (speechBeginning || SpeechText.accept(text, playbackText,
+                        outputActive, SystemClock.elapsedRealtime() < echoUntil));
+                if (accepted) {
+                    if (!speechBeginning) {
+                        speechBeginning = true;
+                        // This event follows the first non-echo recognized words,
+                        // not raw amplitude that could be the loudspeaker itself.
+                        if (outputActive) stopSpeech(true);
+                        fire("onSpeechBeginning", "");
+                    }
+                    if (isFinal && !continuous) stopRecognitionSession();
+                    fire(isFinal ? "onSpeechResult" : "onSpeechPartial", text);
                 }
-                @Override public void onReadyForSpeech(Bundle params) { fire("onSpeechReady", ""); }
-                @Override public void onBeginningOfSpeech() {}
-                @Override public void onRmsChanged(float rmsdB) {}
-                @Override public void onBufferReceived(byte[] buffer) {}
-                @Override public void onEndOfSpeech() {}
-                @Override public void onPartialResults(Bundle partialResults) {
-                    ArrayList<String> list = partialResults.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-                    if (list != null && !list.isEmpty()) fire("onSpeechPartial", list.get(0));
-                }
-                @Override public void onEvent(int eventType, Bundle params) {}
-            });
+                if (isFinal) speechBeginning = false;
+            }
+            @Override public void onError(String error) { if (current()) endRecognitionError(error); }
+        });
+    }
 
-            Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toString());
-            intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
-            // On-device recognition is beep-free (the network service plays its
-            // "tui"/"tunun" blips on every start/stop). This is the primary
-            // sound fix; the audio-focus request below covers devices that have
-            // no on-device model and fall back to the network recognizer.
-            intent.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true);
-            // Continuous sessions hold focus across utterances so restarts stay
-            // silent; single listens use a 15s one-shot focus.
-            requestBeepSuppression(mode == null);
-            recognizer.startListening(intent);
-        } catch (Exception e) {
-            releaseBeepFocus();
-            fire("onSpeechError", "exception");
+    private void endRecognitionError(String error) {
+        // Capture/model failures end the session; no automatic retry or fallback
+        // to a system recognizer. Ordinary PCM silence is not a failure.
+        stopRecognitionSession();
+        fire("onSpeechError", error);
+        fire("onSpeechStopped", error);
+    }
+
+    private void cancelListenTimeout() {
+        if (listenTimeout != null) handler.removeCallbacks(listenTimeout);
+        listenTimeout = null;
+    }
+
+    private void cancelRecognition() {
+        cancelListenTimeout();
+        ++recognitionGeneration;
+        speechBeginning = false;
+        EmbeddedSpeechEngine.Session old = recognizer;
+        recognizer = null;
+        if (old != null) old.stop();
+    }
+
+    private void stopRecognitionSession() {
+        continuous = false;
+        outputMuted = false;
+        pendingListenMode = null;
+        permissionGranted = false;
+        cancelRecognition();
+    }
+
+    public void onPermissionResult(int requestCode, int[] results) {
+        if (requestCode != REQ_MIC) return;
+        permissionPending = false;
+        if (pendingListenMode == null || destroyed) return;
+        permissionGranted = results != null && results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED;
+        if (!permissionGranted) { endRecognitionError("9"); return; }
+        resumePermissionListen();
+    }
+
+    private void resumePermissionListen() {
+        if (!permissionGranted || pendingListenMode == null || !canUsePage()) return;
+        continuous = "continuous".equals(pendingListenMode);
+        pendingListenMode = null;
+        permissionGranted = false;
+        startListening();
+    }
+
+    /** MainActivity's getUserMedia tracker prevents native/web recorder overlap. */
+    @JavascriptInterface
+    public void setWebMicrophoneInUse(boolean inUse) {
+        // A track's final release may arrive after onPause. Accept that release
+        // so a transient dialog cannot leave a stale microphone reservation.
+        handler.post(() -> { if (!destroyed && (canUsePage() || !inUse)) onWebMicrophoneChanged(inUse); });
+    }
+
+    void onWebMicrophoneChanged(boolean inUse) {
+        webMicrophoneInUse = inUse;
+        if (inUse) {
+            stopRecognitionSession();
+            stopSpeech(true);
         }
     }
 
-    private void fire(final String event, final String text) {
-        activity.runOnUiThread(() -> {
-            if (activity.isFinishing() || activity.isDestroyed()) return;
-            String js = "window.__lifeosSpeech && window.__lifeosSpeech." + event + "(" +
-                org.json.JSONObject.quote(text) + ")";
-            MainActivity.get().evaluateJs(js);
-        });
+    public void onResume() {
+        foreground = true;
+        resumePermissionListen();
+    }
+
+    public void onPause() {
+        if (recognizer != null) fire("onSpeechStopped", "paused");
+        foreground = false;
+        continuous = false;
+        outputMuted = false;
+        cancelRecognition();
+        stopSpeech(false);
+        // A permission dialog may pause the activity. Only that in-flight user
+        // request may resume; ordinary foreground return always stays idle.
+        if (!permissionPending) {
+            pendingListenMode = null;
+            permissionGranted = false;
+        }
+    }
+
+    public void onPageChanged() {
+        stopRecognitionSession();
+        stopSpeech(false);
+        webMicrophoneInUse = false;
+    }
+
+    public void destroy() {
+        onPageChanged();
+        destroyed = true;
+        foreground = false;
+        ++ttsGeneration;
+        handler.removeCallbacksAndMessages(null);
+        if (tts != null) { try { tts.shutdown(); } catch (Exception ignored) {} }
+        tts = null;
+        ttsState = "unavailable";
+    }
+
+    private void fire(String event, String text) {
+        if (!canUsePage()) return;
+        String js = "window.__lifeosSpeech && typeof window.__lifeosSpeech." + event
+                + " === 'function' && window.__lifeosSpeech." + event + "("
+                + org.json.JSONObject.quote(text) + ")";
+        if (activity instanceof MainActivity) ((MainActivity) activity).evaluateJs(js);
     }
 }

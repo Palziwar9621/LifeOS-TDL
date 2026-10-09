@@ -21,3 +21,16 @@ Thumbs.db
 
 # Tooling internals
 .freebuff/
+
+.vercel
+
+# Private signing material and local build state
+*.keystore
+*.jks
+**/local.properties
+**/.gradle/
+**/build/
+**/signing.properties
+.omnirush/
+release/
+supabase/.temp/

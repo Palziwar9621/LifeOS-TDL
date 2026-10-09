@@ -1164,55 +1164,70 @@ export async function snoozeReminder(id: string, minutes: number): Promise<void>
 /** Complete a reminder. Recurring ones roll forward to their next occurrence instead of dying. */
 export async function completeReminder(id: string): Promise<void> {
   const r = state.reminders.find((x) => x.id === id);
-  if (!r || !r.recurrence) {
+  if (!r || r.deleted) return;
+  if (!r.recurrence) {
     await updateReminder(id, { done: true } as any);
     return;
   }
-  const next = nextReminderDue(r, new Date(r.snoozed_until ?? r.due_at));
-  if (next) {
-    await updateReminder(id, { due_at: next.toISOString(), done: false, snoozed_until: null, fired_at: null } as any);
-  } else {
-    await updateReminder(id, { done: true } as any);
-  }
+  const next = nextReminderDue(r, new Date());
+  // A malformed repeating rule must not silently turn into a completed,
+  // non-repeating reminder. Leave it intact so its schedule can be corrected.
+  if (!next) throw new Error('Cannot calculate the next reminder occurrence. Check its due date and recurrence days.');
+  await updateReminder(id, { due_at: next.toISOString(), done: false, snoozed_until: null, fired_at: null } as any);
 }
 
-/** Next due Date for a recurring reminder, strictly after `after`. */
-function nextReminderDue(r: Reminder, after: Date): Date | null {
-  const timeOfDay = { h: after.getHours(), m: after.getMinutes(), s: after.getSeconds() };
-  const at = (d: Date) => { d.setHours(timeOfDay.h, timeOfDay.m, timeOfDay.s, 0); return d; };
-  const start = new Date(after.getTime() + 60000); // strictly after
-  const isDay = (d: Date) =>
-    r.recurrence_days && r.recurrence_days.length
-      ? r.recurrence_days.includes(d.getDay())
-      : true;
-  for (let i = 0; i < 370; i++) {
-    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
-    switch (r.recurrence) {
-      case 'daily':
-        if (d > start || at(new Date(d)) > start) return at(new Date(d.getTime() === new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime() ? d.getTime() : d.getTime()));
-        return at(d);
-      case 'weekdays':
-        if (d.getDay() >= 1 && d.getDay() <= 5 && at(new Date(d)) > start) return at(d);
-        break;
-      case 'weekly':
-      case 'custom':
-        if (isDay(d) && at(new Date(d)) > start) return at(d);
-        break;
-      case 'monthly': {
-        const probe = new Date(d.getFullYear(), d.getMonth(), Math.min(d.getDate(), 1));
-        void probe;
-        break;
-      }
-      case 'yearly': {
-        // same month/day next year
-        const cand = new Date(start.getFullYear() + 1, start.getMonth(), start.getDate());
-        return at(cand);
-      }
-    }
-  }
-  // monthly fallback: add one month, same time
+/** Pure calendar calculation: strictly after both the current due instant and
+ * `now`, at the unsnoozed due time in the device's local timezone. Calendar
+ * construction deliberately follows Date's DST gap/overlap normalization. */
+export function nextReminderDue(
+  r: Pick<Reminder, 'due_at' | 'recurrence' | 'recurrence_days'>,
+  now: Date = new Date(),
+): Date | null {
+  const due = new Date(r.due_at);
+  const threshold = Math.max(due.getTime(), now.getTime());
+  if (!Number.isFinite(threshold) || !r.recurrence) return null;
+  const start = new Date(threshold);
+  const at = (year: number, month: number, day: number) => {
+    const d = new Date(due.getTime());
+    // Set day=1 before changing month/year; avoid implicit Jan 31 -> Mar 3.
+    d.setDate(1);
+    d.setFullYear(year, month, day);
+    d.setHours(due.getHours(), due.getMinutes(), due.getSeconds(), due.getMilliseconds());
+    return d;
+  };
+  const clamped = (year: number, month: number) => {
+    const last = at(year, month + 1, 0).getDate();
+    return at(year, month, Math.min(due.getDate(), last));
+  };
   if (r.recurrence === 'monthly') {
-    return at(new Date(start.getFullYear(), start.getMonth() + 1, start.getDate()));
+    const candidate = clamped(start.getFullYear(), start.getMonth());
+    if (candidate.getTime() > threshold) return candidate;
+    const next = clamped(start.getFullYear(), start.getMonth() + 1);
+    return next.getTime() > threshold ? next : null;
+  }
+  if (r.recurrence === 'yearly') {
+    const candidate = clamped(start.getFullYear(), due.getMonth());
+    if (candidate.getTime() > threshold) return candidate;
+    const next = clamped(start.getFullYear() + 1, due.getMonth());
+    return next.getTime() > threshold ? next : null;
+  }
+
+  let days: Set<number> | null = null;
+  if (r.recurrence === 'weekly' || r.recurrence === 'custom') {
+    const selected = Array.isArray(r.recurrence_days) ? r.recurrence_days : [];
+    // Empty weekly = same weekday as due_at. Custom requires explicit days;
+    // invalid selections must not broaden into an every-day schedule.
+    if (!selected.length && r.recurrence === 'weekly') days = new Set([due.getDay()]);
+    else {
+      if (!selected.length || selected.some(d => !Number.isInteger(d) || d < 0 || d > 6)) return null;
+      days = new Set(selected);
+    }
+  } else if (r.recurrence === 'weekdays') days = new Set([1, 2, 3, 4, 5]);
+  else if (r.recurrence !== 'daily') return null;
+
+  for (let i = 0; i <= 7; i++) {
+    const candidate = at(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    if (candidate.getTime() > threshold && (!days || days.has(candidate.getDay()))) return candidate;
   }
   return null;
 }

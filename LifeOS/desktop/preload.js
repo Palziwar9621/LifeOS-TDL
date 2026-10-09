@@ -12,6 +12,6 @@ window.addEventListener('DOMContentLoaded', () => {
 contextBridge.exposeInMainWorld('LifeOSNative', {
   platform: 'electron',
   alarms: {
-    scheduleAlarms: (json) => ipcRenderer.send('lifeos:schedule-alarms', json),
+    scheduleAlarms: (json) => ipcRenderer.invoke('lifeos:schedule-alarms', json),
   },
 });

@@ -2,7 +2,7 @@
 //
 // The in-app scheduler only rings while the app is open, and web push only
 // works in real browsers. This bridge closes that gap for the installed
-// apps: it computes the next 7 days of due alarms (same rules as
+// apps: it computes future reminders/tasks and 7 days of routine alarms (same rules as
 // notifications.ts) and hands them to the native layer:
 //
 //   Android shell → AlarmManager exact alarms via a JS interface
@@ -12,78 +12,17 @@
 // opens the app. Re-synced whenever data changes, on app focus, and after
 // boot (Android re-schedules from a persisted snapshot).
 
-import { dbState, getSettings } from './db';
-import { todayStr, parseDateStr } from './dates';
+import { dbState, getSettings, subscribeDb } from './db';
 import { isKeyDismissed, dismissKey, syncDismissals } from './dismissals';
-import type { Reminder, Task, RoutineTask } from './types';
-
-export interface NativeAlarm {
-  /** Unique, stable key — dedupe + cancel on reschedule. */
-  key: string;
-  /** Epoch ms when the alarm should ring. */
-  at: number;
-  title: string;
-  body: string;
-}
+import { planNativeAlarms, type NativeAlarm } from './nativeAlarmPlan';
+export type { NativeAlarm } from './nativeAlarmPlan';
 
 function alarmSound(): string {
-  return ((getSettings().data as any)?.alarm_sound as string) || 'chime';
+  return (getSettings().alarm_sound as string) || 'chime';
 }
 
 export function computeUpcomingAlarms(): NativeAlarm[] {
-  const out: NativeAlarm[] = [];
-  const now = Date.now();
-  // 7 days ahead — so alarms ring on time even if the app stays closed for
-  // days. (The old 24h horizon was why alarms died after a while closed:
-  // nothing beyond tomorrow was ever handed to AlarmManager.)
-  const horizon = now + 7 * 24 * 60 * 60 * 1000;
-  const s = dbState();
-  const defaultSound = alarmSound();
-
-  const add = (key: string, at: number, title: string, body: string) => {
-    if (at > now && at <= horizon && !isKeyDismissed(key))
-      out.push({ key, at, title, body: body + (defaultSound !== 'none' ? '' : ' (silent)') });
-  };
-
-  // Reminders
-  for (const r of s.reminders as Reminder[]) {
-    if (r.done || r.deleted) continue;
-    const fireAt = r.snoozed_until ? new Date(r.snoozed_until).getTime() : new Date(r.due_at).getTime();
-    add(`rem:${r.id}:${r.snoozed_until ?? r.due_at}`, fireAt, '⏰ ' + (r.important ? '⭐ ' : '') + r.title, r.notes ?? 'Reminder');
-  }
-
-  // Tasks with alert lead time
-  for (const t of s.tasks as Task[]) {
-    if (t.deleted || t.archived || t.status === 'completed' || t.status === 'cancelled') continue;
-    if ((t as any).remind_me === false) continue; // user turned reminders off for this task
-    if (t.reminder_minutes == null || !t.due_date) continue;
-    const due = new Date(t.due_date + 'T' + (t.due_time ?? '09:00')).getTime();
-    add(`task:${t.id}:${t.due_date}:${t.due_time}`, due - (t.reminder_minutes ?? 0) * 60000, '⏰ Task due soon', t.title);
-  }
-
-  // Routine tasks with a time of day — every day within the 7-day horizon
-  // (so a closed app still rings routines on day 3, 4, 5…).
-  const today = todayStr();
-  const dow0 = parseDateStr(today).getDay();
-  const routineOn = (rt: RoutineTask, date: string, dow: number) => {
-    if (rt.archived || !rt.time_of_day) return false;
-    if (rt.days && rt.days.length) return rt.days.includes(dow);
-    if (rt.weekday != null) return rt.weekday === dow;
-    return rt.extra_date === date;
-  };
-  const doneOn = (rt: RoutineTask, date: string) =>
-    s.routine_completions.some((c) => c.task_id === rt.id && c.done_date === date);
-  for (const rt of s.routine_tasks as RoutineTask[]) {
-    for (let i = 0; i < 7; i++) {
-      const date = new Date(parseDateStr(today).getTime() + i * 86400000).toISOString().slice(0, 10);
-      const dow = (dow0 + i) % 7;
-      if (!routineOn(rt, date, dow) || doneOn(rt, date)) continue;
-      const at = new Date(date + 'T' + rt.time_of_day).getTime();
-      add(`routine:${rt.id}:${date}`, at, '⏰ Routine time', rt.title);
-    }
-  }
-
-  return out;
+  return planNativeAlarms(dbState(), Date.now(), isKeyDismissed);
 }
 
 // ------------------------------------------------------------------
@@ -111,12 +50,17 @@ export function nativeAlarmsActive(): 'android' | 'electron' | null {
 }
 
 let lastPayload = '';
+let syncInFlight = false;
+let syncAgain = false;
 
 /** Push current upcoming alarms to the native layer (no-op in browsers). */
-export function syncNativeAlarms(): void {
+export async function syncNativeAlarms(): Promise<void> {
   const n = (typeof window !== 'undefined') ? (window as any).LifeOSNative : null;
   const fn = bridgeFn();
   if (!fn) { lastSyncStatus = null; return; }
+  // Do not replace the persisted offline schedule with an empty startup store.
+  if (!dbState().user_settings) return;
+  if (syncInFlight) { syncAgain = true; return; }
 
   // Adopt alarms the user turned off natively on this device (Android
   // notification action) into the shared record — silences every device.
@@ -125,15 +69,27 @@ export function syncNativeAlarms(): void {
     for (const k of keys.split(',')) if (k && !isKeyDismissed(k)) dismissKey(k);
   } catch { /* bridge without the new method — fine */ }
 
-  const alarms = computeUpcomingAlarms();
-  const payload = JSON.stringify({ sound: alarmSound(), alarms });
+  const settings = getSettings();
+  const mode = settings.notifications_enabled === false || settings.alert_mode === 'off'
+    ? 'off' : settings.alert_mode === 'alarm' ? 'alarm' : 'notify';
+  const alarms = mode === 'off' ? [] : computeUpcomingAlarms();
+  // Overdue active occurrences retain native snoozes. Deleted, edited,
+  // completed or dismissed occurrences cancel them on the same update.
+  const activeKeys = mode === 'off' ? [] : planNativeAlarms(dbState(), Date.now(), isKeyDismissed, true).map(a => a.key);
+  const payload = JSON.stringify({ sound: alarmSound(), mode, alarms, activeKeys });
   if (payload === lastPayload) return;
-  lastPayload = payload;
+  syncInFlight = true;
   try {
-    const res = fn(payload);
-    lastSyncStatus = typeof res === 'string' ? res : JSON.stringify(res);
+    const res = await fn(payload);
+    lastSyncStatus = typeof res === 'string' ? res : JSON.stringify(res) ?? null;
+    const status = typeof res === 'string' ? JSON.parse(res) : res;
+    // A rejected exact permission / IPC failure must remain retryable.
+    if ((status as any)?.ok === true) lastPayload = payload;
   } catch (e) {
     lastSyncStatus = 'error: ' + String(e);
+  } finally {
+    syncInFlight = false;
+    if (syncAgain) { syncAgain = false; void syncNativeAlarms(); }
   }
 }
 
@@ -144,8 +100,10 @@ export function startNativeAlarmSync(): void {
   if (syncTimer) return;
   // Load the shared dismissal record first so alarms stopped on another
   // device are filtered out of the very first push to the native layer.
-  void syncDismissals().then(() => setTimeout(syncNativeAlarms, 5000));
+  void syncNativeAlarms();
+  void syncDismissals().then(syncNativeAlarms).catch(() => {});
+  subscribeDb(() => { void syncNativeAlarms(); });
   // Data changes bump the store version; re-check every minute regardless.
   syncTimer = setInterval(() => { void syncDismissals().then(syncNativeAlarms); }, 60000);
-  window.addEventListener('focus', syncNativeAlarms);
+  window.addEventListener('focus', () => { lastPayload = ''; void syncNativeAlarms(); });
 }

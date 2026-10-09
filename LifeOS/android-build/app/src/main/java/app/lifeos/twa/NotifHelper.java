@@ -16,7 +16,7 @@ import android.os.Build;
  */
 public final class NotifHelper {
 
-    private static final String CHANNEL_ID = "lifeos_alerts";
+    private static final String CHANNEL_ID = "lifeos_alerts_silent_v2";
 
     private NotifHelper() {}
 
@@ -29,6 +29,8 @@ public final class NotifHelper {
             NotificationChannel ch = new NotificationChannel(CHANNEL_ID, "Routine & task alerts",
                     NotificationManager.IMPORTANCE_DEFAULT); // soundless but visible + heads-up-ish
             ch.setDescription("It's time for a routine or task");
+            ch.setSound(null, null);
+            ch.enableVibration(false);
             nm.createNotificationChannel(ch);
         }
 

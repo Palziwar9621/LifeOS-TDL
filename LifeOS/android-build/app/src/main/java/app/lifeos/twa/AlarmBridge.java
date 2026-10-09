@@ -31,7 +31,14 @@ public class AlarmBridge {
         String payload = prefs.getString("payload", null);
         String keys = prefs.getString("scheduled_keys", "");
         int count = keys.isEmpty() ? 0 : keys.split(",").length;
-        return "{\"hasPayload\":" + (payload != null) + ",\"scheduled\":" + count + "}";
+        return "{\"hasPayload\":" + (payload != null) + ",\"scheduled\":" + count
+                + ",\"exact\":" + canScheduleExact() + ",\"notifications\":" + notificationsAllowed() + "}";
+    }
+
+    @JavascriptInterface
+    public boolean notificationsAllowed() {
+        android.app.NotificationManager nm = (android.app.NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+        return nm != null && (Build.VERSION.SDK_INT < 24 || nm.areNotificationsEnabled());
     }
 
     /** Keys the user turned off on this device — web side adopts them into
@@ -67,7 +74,8 @@ public class AlarmBridge {
      * "alarm" (full alarm). The web app's Settings toggle feeds this. */
     @JavascriptInterface
     public void setAlertMode(String mode) {
-        NotifHelper.setAlertMode(ctx, "alarm".equals(mode) ? "alarm" : "notify");
+        NotifHelper.setAlertMode(ctx, "off".equals(mode) ? "off" : "alarm".equals(mode) ? "alarm" : "notify");
+        if ("off".equals(mode)) AlarmSoundService.stop(ctx);
     }
 
     /** Show a silent notification right away (web-driven, for alerts while

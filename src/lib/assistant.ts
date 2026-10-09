@@ -3,6 +3,7 @@
 // high priority" into a structured action. Runs fully on-device — no API
 // keys, no network, works offline.
 import { parseQuickAdd } from './quickadd';
+import { stopIntent } from './assistantSafety';
 
 export type AssistantIntent =
   | { kind: 'add_task'; text: string; presetDate?: string; presetTime?: string; priority?: string }
@@ -11,6 +12,7 @@ export type AssistantIntent =
   | { kind: 'delete_task' | 'delete_reminder' | 'delete_note'; title_match: string }
   | { kind: 'navigate'; page: string }
   | { kind: 'summarize_day' }
+  | { kind: 'stop'; mode: 'end' | 'interrupt' }
   | { kind: 'unknown'; text: string };
 
 const PAGE_WORDS: Record<string, string> = {
@@ -46,23 +48,23 @@ function normalize(spoken: string): string {
 }
 
 export function parseCommand(spoken: string): AssistantIntent {
-  const t = normalize(spoken);
+  const stopping = stopIntent(spoken);
+  if (stopping) return { kind: 'stop', mode: stopping };
+  const t = normalize(spoken).replace(/^please\s+/, '');
 
   // Keep destructive commands available offline too. The online brain has
   // richer matching, but the fallback must not turn "delete X" into an
   // unknown command when the network is unavailable.
-  const deleteM = t.match(/(?:delete|remove|erase)\s+(?:the\s+)?(.+)/);
+  const deleteM = t.match(/^(?:delete|remove|erase)\s+(?:the\s+)?(task|note|reminder)\s+(.+)$/);
   if (deleteM) {
-    const raw = deleteM[1].trim();
-    const kind = /\b(note|notes)\b/.test(raw) ? 'delete_note'
-      : /\b(reminder|reminders)\b/.test(raw) ? 'delete_reminder'
-        : 'delete_task';
-    const title_match = raw.replace(/\b(task|tasks|note|notes|reminder|reminders)\b/g, '').trim();
-    return { kind, title_match: title_match || raw };
+    const raw = deleteM[2].trim();
+    if (/\b(?:and|but|except|all|every)\b/.test(raw)) return { kind: 'unknown', text: spoken };
+    const kind = deleteM[1] === 'note' ? 'delete_note' : deleteM[1] === 'reminder' ? 'delete_reminder' : 'delete_task';
+    return { kind, title_match: raw };
   }
 
   // "add note <title> about <body>" / "take a note ..."
-  const noteM = t.match(/(?:add|take|create|make)\s+(?:a\s+)?note\s+(.*)/);
+  const noteM = t.match(/^(?:add|take|create|make)\s+(?:a\s+)?note\s+(.+)/);
   if (noteM) {
     const body = noteM[1];
     const aboutM = body.split(/\s+about\s+|\s+that\s+says\s+|\s+saying\s+/);
@@ -70,7 +72,7 @@ export function parseCommand(spoken: string): AssistantIntent {
   }
 
   // "add task ..." / "remind me to ..." / "create reminder ..."
-  const taskM = t.match(/(?:add|create|new)\s+(?:a\s+)?task\s+(.*)/);
+  const taskM = t.match(/^(?:add|create|new)\s+(?:a\s+)?task\s+(.+)/);
   if (taskM) {
     const p = parseQuickAdd(taskM[1]);
     const timeWord = Object.keys(TIME_WORDS).find((w) => ` ${taskM[1]} `.includes(` ${w} `));
@@ -83,17 +85,15 @@ export function parseCommand(spoken: string): AssistantIntent {
     };
   }
 
-  const remindM = t.match(/remind me (?:to |about )?(.*)/);
+  const remindM = t.match(/^remind me (?:to |about )?(.+)/);
   if (remindM) {
     const p = parseQuickAdd(remindM[1]);
     const when = p.due_date && p.due_time
       ? new Date(`${p.due_date}T${p.due_time.slice(0, 5)}`).toISOString()
-      : p.due_date
-        ? new Date(`${p.due_date}T18:00`).toISOString()
-        : undefined;
+      : undefined;
     return { kind: 'add_reminder', text: p.title, due_at: when };
   }
-  const remM = t.match(/(?:add|create|new)\s+(?:a\s+)?reminder\s+(.*)/);
+  const remM = t.match(/^(?:add|create|new)\s+(?:a\s+)?reminder\s+(.+)/);
   if (remM) {
     const p = parseQuickAdd(remM[1]);
     const when = p.due_date && p.due_time
@@ -116,12 +116,13 @@ export function parseCommand(spoken: string): AssistantIntent {
 
 /** Wake-word check: "hey lifeos", "okay lifeos", or a custom phrase. */
 export function matchesWakeWord(transcript: string, wakeWord: string): boolean {
-  return transcript.toLowerCase().includes(wakeWord.toLowerCase());
+  const t = transcript.trim().toLowerCase();
+  const w = wakeWord.trim().toLowerCase();
+  return !!w && t.startsWith(w) && (t.length === w.length || /^[\s,.!?]/.test(t.slice(w.length)));
 }
 
 /** Strip the wake word (and anything before it) so the rest is the command. */
 export function stripWakeWord(transcript: string, wakeWord: string): string {
-  const i = transcript.toLowerCase().indexOf(wakeWord.toLowerCase());
-  if (i === -1) return transcript;
-  return transcript.slice(i + wakeWord.length).replace(/^[\s,.]+/, '');
+  if (!matchesWakeWord(transcript, wakeWord)) return transcript;
+  return transcript.trim().slice(wakeWord.trim().length).replace(/^[\s,.!?]+/, '');
 }

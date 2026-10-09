@@ -12,13 +12,15 @@ import android.content.SharedPreferences;
 /**
  * Fired by AlarmManager at the alarm time. Shows a max-importance,
  * full-screen notification and starts the looping sound/vibration service.
- * The alarm rings UNTIL the user taps Snooze, Dismiss, or opens the app —
+ * The alarm rings UNTIL the user taps Snooze or Turn off —
  * no time cap. A dismissed alarm never re-fires: it only rings again when
  * its next interval is scheduled (Snooze schedules one explicitly).
  */
 public class AlarmReceiver extends BroadcastReceiver {
 
-    static final String CHANNEL_ID = "lifeos_alarms";
+    // A new soundless channel: our service, not the channel's default beep,
+    // plays the selected melody. Channel sound cannot be changed after creation.
+    static final String CHANNEL_ID = "lifeos_alarms_v2";
     static final String ACTION_DISMISS = "app.lifeos.twa.DISMISS";
     static final String ACTION_SNOOZE = "app.lifeos.twa.SNOOZE";
     static final String EXTRA_NOTIF_ID = "notif_id";
@@ -37,24 +39,24 @@ public class AlarmReceiver extends BroadcastReceiver {
             return;
         }
         if (ACTION_SNOOZE.equals(action)) {
+            String key = intent.getStringExtra(EXTRA_KEY);
+            if (key == null || !AlarmScheduler.snooze(ctx, key, 10)) return;
             AlarmSoundService.stop(ctx);
             NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
             if (nm != null) nm.cancel(intent.getIntExtra(EXTRA_NOTIF_ID, 0));
-            String key = intent.getStringExtra(EXTRA_KEY);
-            if (key != null) AlarmScheduler.snooze(ctx, key, 10);
             return;
         }
 
 
         String key = intent.getStringExtra(EXTRA_KEY);
-        if (key == null) return;
+        if (key == null || !AlarmScheduler.shouldDeliver(ctx, key)) return;
         SharedPreferences prefs = ctx.getSharedPreferences("lifeos_alarms", Context.MODE_PRIVATE);
         String title = prefs.getString("alarm:" + key + ":title", "⏰ LifeOS alarm");
         String body = prefs.getString("alarm:" + key + ":body", "");
 
         // Alert mode from the web app's Settings: "notify" = silent notification
         // only (no alarm sound). "alarm" = full alarm. Default: notify.
-        if ("notify".equals(NotifHelper.alertMode(ctx))) {
+        if ("notify".equals(NotifHelper.alertMode(ctx)) || "none".equals(prefs.getString("sound", "chime"))) {
             if (NotifHelper.isSuppressed(ctx, key)) return; // already notified this occurrence
             NotifHelper.markShown(ctx, key);
             NotifHelper.show(ctx, key, title, body);
@@ -65,13 +67,14 @@ public class AlarmReceiver extends BroadcastReceiver {
 
         NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm == null) return;
+        if (android.os.Build.VERSION.SDK_INT >= 24 && !nm.areNotificationsEnabled()) return;
 
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             NotificationChannel ch = new NotificationChannel(CHANNEL_ID, "LifeOS alarms",
                     NotificationManager.IMPORTANCE_HIGH);
             ch.setDescription("Reminders, tasks and routines");
-            ch.enableVibration(true);
-            ch.setVibrationPattern(new long[]{0, 500, 150, 500, 150, 500, 150, 800});
+            ch.setSound(null, null);
+            ch.enableVibration(false);
             ch.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
             nm.createNotificationChannel(ch);
         }
@@ -95,20 +98,22 @@ public class AlarmReceiver extends BroadcastReceiver {
                 .setCategory(Notification.CATEGORY_ALARM)
                 .setVisibility(Notification.VISIBILITY_PUBLIC)
                 .setOngoing(true) // can't be swiped away — must be acted on
-                .setFullScreenIntent(pOpen, true)
                 .setContentIntent(pOpen)
                 .addAction(new Notification.Action.Builder(null, "Snooze 10m", pSnooze).build())
                 .addAction(new Notification.Action.Builder(null, "Turn off", pDismiss).build());
 
-        nm.notify(notifId, b.build());
+        if (android.os.Build.VERSION.SDK_INT < 34 || nm.canUseFullScreenIntent()) b.setFullScreenIntent(pOpen, true);
+        Notification notification = b.build();
+        nm.notify(notifId, notification);
 
         // Looping sound + vibration until the user acts (no cap).
-        AlarmSoundService.start(ctx, notifId, prefs.getString("sound", "chime"));
+        AlarmSoundService.start(ctx, notifId, prefs.getString("sound", "chime"), notification);
     }
 
     private static PendingIntent action(Context ctx, String action, String key, int requestCode, int notifId) {
         Intent i = new Intent(ctx, AlarmReceiver.class);
         i.setAction(action);
+        i.setData(android.net.Uri.parse("lifeos://alarm-action/" + android.net.Uri.encode(key)));
         i.putExtra(EXTRA_KEY, key);
         i.putExtra(EXTRA_NOTIF_ID, notifId);
         return PendingIntent.getBroadcast(ctx, requestCode, i,

@@ -23,7 +23,7 @@ plugins {
 def twaManifest = [
     applicationId: 'app.lifeos.twa',
     hostName: 'life-os-tdl.vercel.app', // The domain being opened in the TWA.
-    launchUrl: '/', // The start path for the TWA. Must be relative to the domain.
+    launchUrl: '/app', // The start path for the TWA. Must be relative to the domain.
     name: 'LifeOS', // The application name.
     launcherName: 'LifeOS', // The name shown on the Android Launcher.
     themeColor: '#4F46E5', // The color used for the status bar.
@@ -57,8 +57,12 @@ android {
         applicationId "app.lifeos.twa"
         minSdkVersion 23
         targetSdkVersion 36
-        versionCode 20
-        versionName "1.2"
+        versionCode 21
+        versionName "1.3.0"
+        ndk {
+            // Match the Vosk AAR; do not ship JNA-only legacy MIPS/armeabi ABIs.
+            abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
+        }
 
         // The name for the application
         resValue "string", "appName", twaManifest.name
@@ -148,6 +152,7 @@ android {
     buildTypes {
         release {
             minifyEnabled true
+            proguardFiles 'speech-native.pro'
         }
     }
     compileOptions {
@@ -156,6 +161,11 @@ android {
     }
     lintOptions {
         checkReleaseBuilds false
+    }
+    // The model is already a ZIP. Store it once in the APK; extract lazily to
+    // app-private noBackup storage. Do not inflate/recompress it at build time.
+    androidResources {
+        noCompress += ['zip']
     }
 }
 
@@ -197,7 +207,7 @@ task generateShorcutsFile {
 preBuild.dependsOn(generateShorcutsFile)
 
 repositories {
-    
+    mavenCentral()
 }
 
 dependencies {
@@ -205,5 +215,7 @@ dependencies {
 
         implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.6.2'
     implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
+    implementation 'net.java.dev.jna:jna:5.18.1@aar'
+    implementation 'com.alphacephei:vosk-android:0.3.75@aar'
     
 }
