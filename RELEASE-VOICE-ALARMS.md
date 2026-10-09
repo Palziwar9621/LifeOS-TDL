@@ -24,6 +24,10 @@
 ## Distribution
 Windows binaries are served as `public/LifeOS-Setup.exe` and `public/LifeOS-Portable.exe`; download page uses same-site links.
 
+Production at `https://life-os-tdl.vercel.app` updated through the existing GitHub integration. `node scripts/verify-production.mjs` passed: both Windows downloads returned HTTP 200 and matched the tested local SHA-256 hashes; the deployed app chunk contained the new wake/loading UI and granular tool contract. Vercel CLI credentials were unavailable, but no direct CLI deployment was needed.
+
+Source commit: `b61ecee`; Windows distribution commit: `2ff09d8`. Separate Cloudflare configuration, marketing material and other unrelated local files were not published. Native artwork already present in the working tree was retained in this build and committed for reproducibility. Signing material is ignored and excluded from deployment.
+
 Android release source builds successfully. The aligned unsigned output is `release/LifeOS-1.3.0-aligned-unsigned.apk`. Do not replace `public/LifeOS.apk` until the owner signs `release/LifeOS-1.3.0.apk` with the existing LifeOS key and its certificate matches the previous published APK. Never distribute the debug APK as an upgrade.
 
 ## Honest limits and device acceptance
