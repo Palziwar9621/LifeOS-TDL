@@ -1,6 +1,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import * as db from '../src/lib/db.ts';
+import { getClient } from '../src/lib/supabase.ts';
 import { runAssistantTool } from '../src/lib/assistantTools.ts';
 import { getAssistantSettings, saveAssistantSettings, extractWakeCommand, executeCommand, buildAppContext, startListening, stopListening, isListening, nativeTtsSpeak, duckMicForSpeech, VOICE_MODEL_LOAD_TIMEOUT_MS } from '../src/lib/voice.ts';
 
@@ -140,7 +141,8 @@ test('bounded CRUD updates and deletes every advertised small-entity adapter', a
   }
 });
 
-test('model success prose cannot replace missing-target execution results', async () => {
+test('model success prose cannot replace missing-target execution results', async (t) => {
+  t.mock.method(getClient()!.auth, 'getSession', async () => ({ data: { session: { access_token: 'fixture-only-not-a-secret', user: { id: 'authenticated-test-user' }, expires_at: Math.floor(Date.now() / 1000) + 3600 } }, error: null }));
   const original = globalThis.fetch;
   globalThis.fetch = async () => new Response(JSON.stringify({ reply: 'Done, deleted your task!', calls: [{ name: 'delete_task', args: { title_match: 'Nonexistent task' } }] }), { headers: { 'Content-Type': 'application/json' } });
   saveAssistantSettings({ ...getAssistantSettings(), useAI: true });
@@ -151,7 +153,8 @@ test('model success prose cannot replace missing-target execution results', asyn
   } finally { globalThis.fetch = original; }
 });
 
-test('barge-in aborts pending assistant fetch and never falls back to an offline write', async () => {
+test('barge-in aborts pending assistant fetch and never falls back to an offline write', { timeout: 5000 }, async (t) => {
+  t.mock.method(getClient()!.auth, 'getSession', async () => ({ data: { session: { access_token: 'fixture-only-not-a-secret', user: { id: 'authenticated-test-user' }, expires_at: Math.floor(Date.now() / 1000) + 3600 } }, error: null }));
   const original = globalThis.fetch;
   let started!: () => void;
   const ready = new Promise<void>(resolve => { started = resolve; });

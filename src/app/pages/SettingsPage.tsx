@@ -174,8 +174,18 @@ function AssistantSection({ toast }: any) {
   const nativeAssistant = isAndroid ? (window as any).LifeOSAssistant ?? null : null;
   const [wakeOn, setWakeOn] = useState<boolean>(() => !!nativeAssistant?.wakeEnabled?.());
 
+  useEffect(() => {
+    const changed = () => setS(getAssistantSettings());
+    window.addEventListener('lifeos-assistant-settings', changed);
+    window.addEventListener('storage', changed);
+    return () => {
+      window.removeEventListener('lifeos-assistant-settings', changed);
+      window.removeEventListener('storage', changed);
+    };
+  }, []);
+
   const patch = (p: Partial<typeof s>) => {
-    const next = { ...s, ...p };
+    const next = { ...getAssistantSettings(), ...p };
     setS(next);
     saveAssistantSettings(next);
   };
@@ -224,6 +234,13 @@ function AssistantSection({ toast }: any) {
           </label>
 
           <label className="mb-4 flex items-center justify-between gap-3">
+            <span className="text-sm font-semibold">Wake mode while app is open</span>
+            <input type="checkbox" className="checkbox-tap" checked={s.wakeConsent === true && s.listenContinuously} disabled={!s.enabled}
+              onChange={(e) => patch({ listenContinuously: e.target.checked, wakeConsent: e.target.checked })} />
+          </label>
+          <p className="text-xs muted -mt-2 mb-4">Remembered on this device. When enabled, LifeOS waits for your wake word when opened or brought back to the foreground; it does not resume a conversation. Tapping the mic to stop pauses this session until the next app launch or resume. Turn this option off to stop foreground wake listening permanently. Microphone permission is required; after an error, tap Resume wake mode to retry.</p>
+
+          <label className="mb-4 flex items-center justify-between gap-3">
             <span className="text-sm font-semibold">AI understanding (Groq)</span>
             <input type="checkbox" className="checkbox-tap" checked={s.useAI} onChange={(e) => patch({ useAI: e.target.checked })} />
           </label>
@@ -231,7 +248,7 @@ function AssistantSection({ toast }: any) {
 
           <label className="label">Wake word</label>
           <input className="input mb-1" value={s.wakeWord} onChange={(e) => patch({ wakeWord: e.target.value.toLowerCase() })} placeholder="hey lifeos" />
-          <p className="text-xs muted mb-4">Starts a voice chat — say it (or just “hello”) and then keep giving commands without repeating it. The chat stays on until you say “turn off assistant” or tap the mic. The assistant also starts listening automatically whenever the app opens.</p>
+          <p className="text-xs muted mb-4">While wake mode is waiting, say your complete wake phrase to start a voice chat, then keep giving commands without repeating it. The chat stays on until you say “turn off assistant” or tap the mic. Automatic foreground listening requires the wake mode option above.</p>
 
           {nativeAssistant && (
             <div className="rounded-2xl ring-1 ring-slate-900/10 dark:ring-white/10 p-4 mb-4">

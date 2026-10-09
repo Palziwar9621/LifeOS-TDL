@@ -6,6 +6,7 @@ import { todayStr } from './dates';
 import { parseQuickAdd } from './quickadd';
 import { executePlan, stopIntent, type PlanResult } from './assistantSafety';
 import { runAssistantTool } from './assistantTools';
+import { AssistantError, assistantError, type AssistantErrorCode } from './assistantError';
 export { stopIntent } from './assistantSafety';
 
 export function nativeSpeech(): any | null { return typeof window !== 'undefined' ? (window as any).LifeOSSpeech ?? null : null; }
@@ -214,16 +215,24 @@ export function buildAppContext(page: string, _pageParams: Record<string, string
   const now = new Date();
   return { page, pageParams: {}, today: todayStr(), weekday: now.toLocaleDateString('en', { weekday: 'long' }), time: `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`, timezoneOffsetMinutes: now.getTimezoneOffset(), projects: [], categories: [], recentTaskTitles: [], todayTaskCount: dbState().tasks.filter(t => !t.deleted && !t.archived && t.due_date === todayStr() && t.status !== 'completed').length, routines: [] };
 }
-export interface CommandResult extends PlanResult {}
+export interface CommandResult extends PlanResult { errorCode?: AssistantErrorCode }
 export async function executeCommand(spoken: string, ctx: { page: string; pageParams: Record<string, string>; navigate: (p: any, params?: Record<string, string>) => void }, history: { role: 'user' | 'assistant'; content: string }[] = [], signal?: AbortSignal): Promise<CommandResult> {
   const cancelled = (): CommandResult => ({ ok: false, cancelled: true, message: '', results: [] });
   if (signal?.aborted || stopIntent(spoken)) return cancelled();
   if (!spoken.trim() || spoken.length > 500) return { ok: false, message: 'Please use a short, specific request.', results: [] };
   if (/^(?:what can you do|help|capabilities)[?.!]*$/i.test(spoken.trim())) return executePlan([{ name: 'capabilities', args: {} }], c => runAssistantTool(c, ctx), signal);
+  let offlineReason = new AssistantError('ai_disabled', true);
   if (getAssistantSettings().useAI) {
     let plan: { reply: string; calls: ToolCall[] } | undefined;
     try { plan = await askBrain(spoken, buildAppContext(ctx.page, ctx.pageParams), history, signal); }
-    catch { if (signal?.aborted) return cancelled(); }
+    catch (error) {
+      const failure = assistantError(error);
+      if (signal?.aborted || failure.code === 'cancelled') return cancelled();
+      // Only a known preflight lack of AI can use the local parser. A remote
+      // failure/invalid plan must never become an unintended local write.
+      if (!failure.offlineAllowed) return { ok: false, message: failure.message, errorCode: failure.code, results: [] };
+      offlineReason = failure;
+    }
     if (signal?.aborted) return cancelled();
     if (plan) {
       if (plan.calls.length) return executePlan(plan.calls, c => runAssistantTool(c, ctx), signal);
@@ -245,7 +254,7 @@ export async function executeCommand(spoken: string, ctx: { page: string; pagePa
     case 'add_note': call = { name: 'add_note', args: { title: intent.title, content: intent.content } }; break;
     case 'navigate': call = { name: 'navigate', args: { page: intent.page } }; break;
     case 'summarize_day': call = { name: 'summarize_day', args: {} }; break;
-    default: return { ok: false, message: 'Offline, I can add tasks, notes and timed reminders, delete them by a unique title, open pages or summarize today. Try “add task call Sam tomorrow”.', results: [] };
+    default: return { ok: false, message: offlineReason.message, errorCode: offlineReason.code, results: [] };
   }
   return executePlan([call], c => runAssistantTool(c, ctx), signal);
 }

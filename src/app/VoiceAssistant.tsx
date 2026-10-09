@@ -1,7 +1,8 @@
-// Microphone is idle on every launch. Each session starts from a user gesture.
+// Only explicitly consented foreground wake mode resumes; conversations never do.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from '../ui/components';
 import { useApp } from './store';
+import { createAssistantWakeLifecycle, foregroundWakeEnabled } from '../lib/assistantWake';
 import {
   speechSupported, startListening, stopListening, getAssistantSettings,
   saveAssistantSettings, extractWakeCommand, executeCommand, stopIntent,
@@ -25,7 +26,10 @@ export function VoiceAssistant() {
   const abortRef = useRef<AbortController | null>(null);
   const history = useRef<{ role: 'user' | 'assistant'; content: string }[]>([]);
   const mounted = useRef(true);
-  const setSession = (next: typeof mode) => { modeRef.current = next; setMode(next); };
+  const wakeLifecycle = useRef<ReturnType<typeof createAssistantWakeLifecycle> | null>(null);
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
+  const setSession = useCallback((next: typeof mode) => { modeRef.current = next; setMode(next); }, []);
 
   const cutSpeech = useCallback(() => {
     speechGen.current++;
@@ -38,9 +42,10 @@ export function VoiceAssistant() {
     abortRef.current?.abort(); abortRef.current = null;
     genRef.current++; busyRef.current = false; setBusy(false); cutSpeech();
   }, [cutSpeech]);
-  const endSession = useCallback(() => {
+  const resetSession = useCallback(() => {
     interrupt(); stopListening(); setMicState('stopped'); setSession('idle'); history.current = [];
-  }, [interrupt]);
+  }, [interrupt, setSession]);
+  const endSession = useCallback(() => wakeLifecycle.current?.stop(), []);
   const speak = useCallback((message: string) => {
     cutSpeech();
     const token = ++speechGen.current;
@@ -126,54 +131,73 @@ export function VoiceAssistant() {
     }
     const command = wakeCommand;
     if (command !== null) { setSession('chat'); if (command) void runCommand(command); }
-  }, [settings, runCommand, interrupt, endSession]);
+  }, [settings, runCommand, interrupt, endSession, setSession]);
   const transcriptRef = useRef(onTranscript);
   transcriptRef.current = onTranscript;
   const stableTranscript = useCallback((text: string, final: boolean) => transcriptRef.current(text, final), []);
-  const stableError = useCallback((message: string) => { endSession(); toast(message, 'error'); }, [endSession, toast]);
+  const stableError = useCallback((message: string) => {
+    if (!mounted.current) return;
+    wakeLifecycle.current?.fail(); toastRef.current(message, 'error');
+  }, []);
   const speechBeginning = useCallback(() => {
     // Vosk emits this after accepted, non-echo words. Stop generation before
     // the final transcript arrives; only that final may start a new action.
     if (modeRef.current !== 'idle') interrupt();
   }, [interrupt]);
+  const startSession = useCallback((next: 'chat' | 'wake') => {
+    resetSession();
+    setSession(next);
+    return startListening(stableTranscript, stableError, setMicState, speechBeginning);
+  }, [resetSession, setSession, stableTranscript, stableError, speechBeginning]);
+  const sessionCallbacks = useRef({ start: startSession, stop: resetSession });
+  sessionCallbacks.current = { start: startSession, stop: resetSession };
+  if (!wakeLifecycle.current) {
+    wakeLifecycle.current = createAssistantWakeLifecycle({
+      settings: getAssistantSettings,
+      visible: () => !document.hidden,
+      supported: speechSupported,
+      start: next => sessionCallbacks.current.start(next),
+      stop: () => sessionCallbacks.current.stop(),
+    });
+  }
   const begin = useCallback((next: 'chat' | 'wake') => {
-    if (!speechSupported() || !settings.enabled) return;
-    endSession();
+    if (!speechSupported() || !getAssistantSettings().enabled || document.hidden) return;
     if (next === 'wake') {
-      // This explicit button consents to listening during this app session.
-      // Recognition readiness, not dispatch, determines whether the mic is on.
+      // Only this gesture (or Settings) grants persisted foreground consent.
       const consented = { ...getAssistantSettings(), listenContinuously: true, wakeConsent: true };
       saveAssistantSettings(consented); setSettings(consented);
     }
-    setSession(next);
-    if (!startListening(stableTranscript, stableError, setMicState, speechBeginning)) setSession('idle');
-  }, [settings.enabled, endSession, stableTranscript, stableError, speechBeginning]);
+    wakeLifecycle.current?.begin(next);
+  }, []);
 
   useEffect(() => {
     mounted.current = true;
+    const lifecycle = wakeLifecycle.current!;
     const changed = () => {
       const next = getAssistantSettings(); setSettings(next);
-      if (!next.enabled || (modeRef.current === 'wake' && (!next.wakeConsent || !next.listenContinuously))) endSession();
+      lifecycle.settingsChanged();
     };
     window.addEventListener('lifeos-assistant-settings', changed);
     window.addEventListener('storage', changed);
-    const hidden = () => { if (document.hidden) endSession(); };
-    document.addEventListener('visibilitychange', hidden);
+    const visibilityChanged = () => { changed(); lifecycle.visibilityChanged(); };
+    document.addEventListener('visibilitychange', visibilityChanged);
+    changed();
+    lifecycle.mount();
     return () => {
-      mounted.current = false; abortRef.current?.abort(); genRef.current++; speechGen.current++;
-      stopListening(); nativeTtsStop(); window.speechSynthesis?.cancel(); releaseSpeechMute();
+      mounted.current = false;
+      lifecycle.unmount();
       window.removeEventListener('lifeos-assistant-settings', changed);
       window.removeEventListener('storage', changed);
-      document.removeEventListener('visibilitychange', hidden);
+      document.removeEventListener('visibilitychange', visibilityChanged);
     };
-  }, [endSession]);
+  }, []);
   useEffect(() => { setTtsUnavailableHandler(() => toast('Spoken audio is unavailable. Your result is shown in the app.', 'info')); return () => setTtsUnavailableHandler(null); }, [toast]);
 
   if (!speechSupported() || !settings.enabled) return null;
   const active = mode !== 'idle';
   const status = micState === 'loading' ? 'Loading offline speech model — first start may take up to 90 seconds' : busy ? 'Thinking' : speaking ? 'Speaking' : micState === 'starting' ? 'Starting microphone' : active && micState === 'stopped' ? 'Microphone paused' : mode === 'wake' ? `Waiting for “${settings.wakeWord}”` : active ? 'Listening' : 'Microphone off';
   return <div className="fixed z-40 bottom-20 right-4 flex flex-col items-end gap-2 md:bottom-6">
-    {mode === 'idle' && <button className="btn-secondary btn-sm" title="Enable microphone and listen for your wake phrase while this app is visible" onClick={() => begin('wake')}>Enable wake mode</button>}
+    {mode === 'idle' && <button className="btn-secondary btn-sm" title="Remember wake mode on this device and wait for your wake phrase whenever the app is visible. Disable it in Settings." onClick={() => begin('wake')}>{foregroundWakeEnabled(settings) ? 'Resume wake mode' : 'Enable wake mode'}</button>}
     <span className="max-w-xs rounded-lg bg-slate-900 px-2 py-1 text-right text-xs text-white" role="status" aria-live="polite">{status}</span>
     <button aria-label={active ? 'Stop voice assistant' : 'Start voice chat'} aria-pressed={active} onClick={() => active ? endSession() : begin('chat')}
       className={`h-12 w-12 rounded-full shadow-lg flex items-center justify-center ring-1 ring-white/20 ${busy || speaking ? 'animate-pulse' : ''}`}
