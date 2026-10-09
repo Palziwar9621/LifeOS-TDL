@@ -1,0 +1,7 @@
+# LifeOS — Cloudflare Pages redirects (mirrors vercel.json rewrites)
+# /app boots the SPA; /home is a legacy alias.
+
+/home              /               301
+/app               /index.html     200
+/app/*             /index.html     200
+/download.html     /download.html  200

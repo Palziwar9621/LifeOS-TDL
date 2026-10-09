@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "vite build && node scripts/prerender.mjs",
     "preview": "vite preview --host",
+    "deploy:cf": "npm run build && npx wrangler pages deploy",
     "typecheck": "tsc --noEmit",
     "test": "node --import ./tests/register.mjs --test \"tests/**/*.test.ts\""
   },

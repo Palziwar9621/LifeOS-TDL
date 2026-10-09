@@ -28,7 +28,9 @@ Production at `https://life-os-tdl.vercel.app` updated through the existing GitH
 
 Source commit: `b61ecee`; Windows distribution commit: `2ff09d8`. Separate Cloudflare configuration, marketing material and other unrelated local files were not published. Native artwork already present in the working tree was retained in this build and committed for reproducibility. Signing material is ignored and excluded from deployment.
 
-Android release source builds successfully. The aligned unsigned output is `release/LifeOS-1.3.0-aligned-unsigned.apk`. Do not replace `public/LifeOS.apk` until the owner signs `release/LifeOS-1.3.0.apk` with the existing LifeOS key and its certificate matches the previous published APK. Never distribute the debug APK as an upgrade.
+Android 1.3.0 (versionCode 21) was signed through the original key's private console prompt. The signed release is `release/LifeOS-1.3.0.apk`, published as `public/LifeOS.apk`. `apksigner verify`, `zipalign -c -P 16 4`, package/version inspection and the speech packaging check passed. The SHA-256 signing certificate matches the previous public APK: `42553b2775c3ded1aedd5d66e42e00c5bedd04749b93c8aae2bf81da5991d6fd`. APK SHA-256: `192b3a826650d52c535bed65a65118e2095eb55b4edaf9b22b37264dcd302ed3`.
+
+Use `scripts/sign-android-release.ps1` in an interactive terminal for this prepared release; it prompts privately and refuses a mismatched certificate. No password is stored in this repository. Install the signed release over the existing app without uninstalling. Real-device upgrade/data-retention testing is still outstanding.
 
 ## Honest limits and device acceptance
 - No Android device was connected. Real speaker echo, accents, cold-load memory/latency, Doze/reboot and packaged Windows sound/resume require device testing.
