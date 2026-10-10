@@ -19,7 +19,7 @@ test('schema budget narrows 68-tool request; history retains fine controls and u
   const history = selectAssistantTools('move it to Monday', [{ role: 'user', content: 'update the planner block Study' }, { role: 'assistant', content: 'Which day?' }]);
   assert.ok(history.tools.some(t => t.function.name === 'update_schedule_block'));
   const broad = selectAssistantTools('make that one blue');
-  assert.equal(broad.narrow, false); assert.equal(broad.model, 'llama-3.3-70b-versatile'); assert.equal(broad.tools.length, 68);
+  assert.equal(broad.narrow, false); assert.equal(broad.model, 'openai/gpt-oss-120b'); assert.equal(broad.tools.length, 68);
   const multiarea = selectAssistantTools('update tasks projects goals notes reminders routines milestones tags categories and calendar blocks');
   assert.equal(multiarea.narrow, false);
 });
@@ -33,8 +33,8 @@ test('provider 429 and model failures recover once using allowed larger model/fu
     });
     const response = await handler(request());
     assert.equal(response.status, 200); assert.equal((await response.json()).calls[0].name, 'add_task');
-    assert.equal(sent.length, 2); assert.equal(sent[0].model, 'llama-3.1-8b-instant');
-    assert.equal(sent[1].model, 'llama-3.3-70b-versatile'); assert.equal(sent[1].tools.length, 68);
+    assert.equal(sent.length, 2);    assert.equal(sent[0].model, 'openai/gpt-oss-20b');
+    assert.equal(sent[1].model, 'openai/gpt-oss-120b'); assert.equal(sent[1].tools.length, 68);
     assert.doesNotMatch(JSON.stringify(sent), /PRIVATE/);
   }
 });
