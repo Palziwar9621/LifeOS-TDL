@@ -113,17 +113,23 @@ export function validateToolCall(value: unknown): ToolCall {
   const call = value as ToolCall;
   const def = definitions.find(d => d.name === call?.name);
   if (!def || !call.args || typeof call.args !== 'object' || Array.isArray(call.args)) throw new Error('That action is not supported.');
-  for (const key of def.required) if (!(key in call.args)) throw new Error(`Please specify ${key.replaceAll('_', ' ')}.`);
+  // Filter-optional models (gpt-oss) often emit empty strings for omitted
+  // optional filter fields like title_contains. An empty string there means
+  // "no filter" — not an invalid argument. Drop them instead of failing.
+  const args: ToolCall['args'] = {};
   for (const [key, v] of Object.entries(call.args)) {
-    if (!Object.hasOwn(def.properties, key) || !validField(v, def.properties[key], key)) throw new Error(`Please check ${key.replaceAll('_', ' ')}; I haven’t made that change.`);
+    if (!Object.hasOwn(def.properties, key)) throw new Error(`Please check ${key.replaceAll('_', ' ')}; I haven’t made that change.`);
+    if (typeof v === 'string' && !def.required.includes(key) && !v.trim()) continue;
+    if (!validField(v, def.properties[key], key)) throw new Error(`Please check ${key.replaceAll('_', ' ')}; I haven’t made that change.`);
+    args[key] = v;
   }
-  if (call.name.startsWith('update_') && !Object.keys(call.args).some(k => !['title_match', 'name_match', 'task_match', 'match_weekday', 'scope'].includes(k))) throw new Error('What would you like to change?');
-  if (call.name === 'set_task_relationships' && !['project_match', 'goal_match', 'category_match'].some(k => k in call.args)) throw new Error('Which task relationship should I change?');
-  if (['create_tag', 'update_tag'].includes(call.name) && typeof (call.args.new_name ?? call.args.name) === 'string' && !(call.args.new_name ?? call.args.name).trim().replace(/^#/, '').trim()) throw new Error('Please give the tag a name.');
-  if (call.name.includes('schedule_block') && call.args.start_time && call.args.end_time && call.args.end_time <= call.args.start_time) throw new Error('The block must end after it starts on the same day.');
-  if (call.name.includes('milestone') && call.args.scope === 'goal' && 'due_date' in call.args) throw new Error('Goal milestones do not support deadlines. You can set a deadline on the goal.');
-  if (call.name === 'add_routine' && !call.args.days?.length && !call.args.extra_date) throw new Error('Which days should this routine run?');
-  if (call.name.includes('routine') && call.args.days && call.args.extra_date) throw new Error('Choose repeating days or a one-off date, not both.');
-  if (call.name === 'navigate' && call.args.tab && call.args.page !== 'library') throw new Error('A library tab needs the library page.');
-  return { name: call.name, args: { ...call.args } };
+  if (call.name.startsWith('update_') && !Object.keys(args).some(k => !['title_match', 'name_match', 'task_match', 'match_weekday', 'scope'].includes(k))) throw new Error('What would you like to change?');
+  if (call.name === 'set_task_relationships' && !['project_match', 'goal_match', 'category_match'].some(k => k in args)) throw new Error('Which task relationship should I change?');
+  if (['create_tag', 'update_tag'].includes(call.name) && typeof (args.new_name ?? args.name) === 'string' && !(args.new_name ?? args.name).trim().replace(/^#/, '').trim()) throw new Error('Please give the tag a name.');
+  if (call.name.includes('schedule_block') && args.start_time && args.end_time && args.end_time <= args.start_time) throw new Error('The block must end after it starts on the same day.');
+  if (call.name.includes('milestone') && args.scope === 'goal' && 'due_date' in args) throw new Error('Goal milestones do not support deadlines. You can set a deadline on the goal.');
+  if (call.name === 'add_routine' && !args.days?.length && !args.extra_date) throw new Error('Which days should this routine run?');
+  if (call.name.includes('routine') && args.days && args.extra_date) throw new Error('Choose repeating days or a one-off date, not both.');
+  if (call.name === 'navigate' && args.tab && args.page !== 'library') throw new Error('A library tab needs the library page.');
+  return { name: call.name, args };
 }

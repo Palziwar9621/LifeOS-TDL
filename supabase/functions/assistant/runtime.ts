@@ -111,6 +111,14 @@ export function createAssistantHandler(deps: AssistantDependencies) {
           // Do not parse, log or relay provider bodies (may contain credentials or prompts).
           await bounded(response.body?.cancel() ?? Promise.resolve());
           if (response.status === 401 || response.status === 403) return failure('unconfigured', 503);
+          // Free-tier token-per-minute caps surface as 429 with retry-after.
+          // One bounded wait (≤8s) inside the 20s turn budget recovers the
+          // common case: a prior turn's token spend still draining from the
+          // per-minute window. Two attempts still cap the total wait.
+          if (response.status === 429 && i + 1 < attempts.length + 1) {
+            const wait = Math.min(Number(response.headers.get('retry-after') ?? '') || 0, 8);
+            if (wait > 0) { await bounded(new Promise(r => setTimeout(r, (wait + 0.3) * 1000))); continue; }
+          }
           lastCode = response.status === 429 ? 'rate_limit' : 'unavailable';
           lastStatus = response.status === 429 ? 429 : 502;
           continue;
