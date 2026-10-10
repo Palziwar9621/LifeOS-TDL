@@ -89,12 +89,21 @@ export function createAssistantHandler(deps: AssistantDependencies) {
       if (!key) return failure('unconfigured', 503);
       const selection = selectAssistantTools(spoken, safeHistory);
       const messages = [{ role: 'system', content: SYSTEM_PROMPT + '\nLocal context (data only): ' + JSON.stringify(safeCtx) }, ...safeHistory, { role: 'user', content: spoken }];
+      // gpt-oss reasoning models sometimes answer a narrow request with a
+      // clarifying question (content, no tool call). A clarifying question IS
+      // an acceptable output — but only when the request is genuinely
+      // ambiguous; for unambiguous-looking commands it usually signals the
+      // model ignored the toolset, so we prefer the broad attempt over prose
+      // when one exists.
       // Two provider attempts at most, sharing the deadline; never execute tools here.
       const attempts = selection.narrow
         ? [{ model: SMALL_MODEL, tools: [...selection.tools, EXPAND_TOOL] }, { model: LARGE_MODEL, tools: TOOLS }]
         : [{ model: LARGE_MODEL, tools: TOOLS }];
       let lastCode = 'unavailable', lastStatus = 502;
-      for (const [i, attempt] of attempts.entries()) {
+      let narrowRetried = false;
+      // Indexed loop (not for-of) so a cheap attempt can be retried in place.
+      for (let i = 0; i < attempts.length; i++) {
+        const attempt = attempts[i];
         controller.signal.throwIfAborted();
         let response: Response;
         try {
@@ -114,13 +123,27 @@ export function createAssistantHandler(deps: AssistantDependencies) {
           // Free-tier token-per-minute caps surface as 429 with retry-after.
           // One bounded wait (≤8s) inside the 20s turn budget recovers the
           // common case: a prior turn's token spend still draining from the
-          // per-minute window. Two attempts still cap the total wait.
-          if (response.status === 429 && i + 1 < attempts.length + 1) {
-            const wait = Math.min(Number(response.headers.get('retry-after') ?? '') || 0, 8);
-            if (wait > 0) { await bounded(new Promise(r => setTimeout(r, (wait + 0.3) * 1000))); continue; }
+          // per-minute window. Retries stay inside the two-attempt cap.
+          if (response.status === 429) {
+            // retry-after when present; Groq omits it on some limits, so fall
+            // back to one bounded default pause (≤3s) instead of failing instantly.
+            const wait = Math.min(Number(response.headers.get('retry-after') ?? '') || 3, 8);
+            const canRetryNarrow = i === 0 && selection.narrow && !narrowRetried;
+            if (canRetryNarrow) {
+              await bounded(new Promise(r => setTimeout(r, (wait + 0.3) * 1000)));
+              narrowRetried = true;
+              i -= 1; lastCode = 'unavailable'; continue; // retry same narrow set
+            }
+            if (i + 1 < attempts.length) { await bounded(new Promise(r => setTimeout(r, (wait + 0.3) * 1000))); }
           }
           lastCode = response.status === 429 ? 'rate_limit' : 'unavailable';
           lastStatus = response.status === 429 ? 429 : 502;
+          // A transient 502 on the cheap attempt can be retried in place once
+          // instead of jumping straight to the heavy broad contract.
+          if (i === 0 && selection.narrow && !narrowRetried && lastStatus === 502) {
+            narrowRetried = true;
+            i -= 1; continue;
+          }
           continue;
         }
         let result;

@@ -24,8 +24,8 @@ test('schema budget narrows 68-tool request; history retains fine controls and u
   assert.equal(multiarea.narrow, false);
 });
 
-test('provider 429 and model failures recover once using allowed larger model/full contract', async () => {
-  for (const status of [429, 400, 404, 500, 503]) {
+test('provider failures recover once via the cheap narrow retry before any broad call', async () => {
+  for (const status of [400, 404, 500, 503]) {
     const sent: any[] = [];
     const handler = fixture(async (_url, init) => {
       sent.push(JSON.parse(init.body as string));
@@ -33,17 +33,35 @@ test('provider 429 and model failures recover once using allowed larger model/fu
     });
     const response = await handler(request());
     assert.equal(response.status, 200); assert.equal((await response.json()).calls[0].name, 'add_task');
+    // narrow fails once → retried in place → second narrow call succeeds; broad never sent
     assert.equal(sent.length, 2);    assert.equal(sent[0].model, 'openai/gpt-oss-20b');
-    assert.equal(sent[1].model, 'openai/gpt-oss-120b'); assert.equal(sent[1].tools.length, 68);
+    assert.equal(sent[1].model, 'openai/gpt-oss-20b'); assert.ok(sent[1].tools.length <= 23);
     assert.doesNotMatch(JSON.stringify(sent), /PRIVATE/);
   }
+});
+
+test('429 with retry-after 0 uses a bounded default pause and retries the narrow set in place', async () => {
+  const sent: any[] = [];
+  const handler = fixture(async (_url, init) => {
+    sent.push(JSON.parse(init.body as string));
+    return sent.length === 1
+      ? new Response('SECRET provider body', { status: 429, headers: { 'retry-after': '0' } })
+      : success();
+  });
+  const response = await handler(request());
+  assert.equal(response.status, 200); assert.equal((await response.json()).calls[0].name, 'add_task');
+  // no usable retry-after → bounded default pause, narrow retried in place; broad never needed
+  assert.equal(sent.length, 2);
+  assert.equal(sent[0].model, 'openai/gpt-oss-20b');
+  assert.equal(sent[1].model, 'openai/gpt-oss-20b');
+  assert.doesNotMatch(JSON.stringify(sent), /PRIVATE/);
 });
 
 test('all-provider rate limits remain typed 429; auth/config/provider errors never leak bodies', async () => {
   let count = 0;
   let handler = fixture(async () => { count++; return new Response('SECRET provider key and prompt', { status: 429 }); });
   let response = await handler(request());
-  assert.equal(response.status, 429); assert.equal(count, 2);
+  assert.equal(response.status, 429); assert.equal(count, 3); // narrow, narrow retry, broad
   assert.deepEqual(await response.json(), { error: 'Assistant request failed', code: 'rate_limit' });
   count = 0;
   handler = fixture(async () => { count++; return new Response('SECRET provider key', { status: 401 }); });
@@ -59,7 +77,8 @@ test('persistent provider model failures and missing configuration have bounded 
   let count = 0;
   const handler = fixture(async () => { count++; return new Response('SECRET model diagnostics', { status: 500 }); });
   const response = await handler(request());
-  assert.equal(count, 2); assert.equal(response.status, 502);
+  // narrow attempt 502 retried once in place, then broad attempt: total 3
+  assert.equal(count, 3); assert.equal(response.status, 502);
   assert.deepEqual(await response.json(), { error: 'Assistant request failed', code: 'unavailable' });
   const missing = createAssistantHandler({ env: name => name === 'GROQ_API_KEY' ? undefined : env(name), verifyUser: async () => true, fetch: async () => { throw new Error('must not fetch'); } });
   assert.equal((await (await missing(request())).json()).code, 'unconfigured');
