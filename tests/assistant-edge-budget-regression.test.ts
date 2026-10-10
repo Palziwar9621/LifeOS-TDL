@@ -61,12 +61,13 @@ test('all-provider rate limits remain typed 429; auth/config/provider errors nev
   let count = 0;
   let handler = fixture(async () => { count++; return new Response('SECRET provider key and prompt', { status: 429 }); });
   let response = await handler(request());
-  assert.equal(response.status, 429); assert.equal(count, 3); // narrow, narrow retry, broad
+  assert.equal(response.status, 429); assert.equal(count, 3); // narrow, narrow retry, fallback
   assert.deepEqual(await response.json(), { error: 'Assistant request failed', code: 'rate_limit' });
   count = 0;
   handler = fixture(async () => { count++; return new Response('SECRET provider key', { status: 401 }); });
   response = await handler(request());
-  assert.equal(response.status, 503); assert.equal(count, 1); assert.equal((await response.json()).code, 'unconfigured');
+  assert.equal(response.status, 503); assert.equal(count, 2); // bad primary key falls through to fallback, then unconfigured
+  assert.equal((await response.json()).code, 'unconfigured');
   count = 0;
   handler = fixture(async () => { count++; return success(); }, async () => false);
   response = await handler(request());
@@ -151,7 +152,7 @@ test('daily-cap 429 (hours-long retry-after) fails fast as rate_limit_daily with
   const response = await handler(request());
   assert.equal(response.status, 429);
   assert.deepEqual(await response.json(), { error: 'Assistant request failed', code: 'rate_limit_daily' });
-  assert.equal(count, 1); // no narrow retry, no broad attempt, no wait
+  assert.equal(count, 2); // primary daily cap falls through to fallback, also daily-capped; no waits
 });
 
 test('provider is env-configurable; defaults stay Groq when env is unset', async () => {

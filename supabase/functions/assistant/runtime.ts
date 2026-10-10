@@ -85,16 +85,22 @@ export function createAssistantHandler(deps: AssistantDependencies) {
         for (const key of ['page', 'today', 'weekday', 'time']) if (typeof ctx[key] === 'string') safeCtx[key] = ctx[key].slice(0, 60);
         for (const key of ['todayTaskCount', 'timezoneOffsetMinutes']) if (typeof ctx[key] === 'number' && Number.isFinite(ctx[key])) safeCtx[key] = ctx[key];
       }
-      // Provider is env-configurable so switching to another OpenAI-compatible
-      // tier (e.g. a free provider) is a secrets change, not a code deploy.
-      // Defaults keep Groq; ASSISTANT_API_KEY is accepted for any provider.
-      const provider = {
+      // Provider chain: primary first (env-configurable — set ASSISTANT_* vars
+      // to point at e.g. Gemini's OpenAI-compatible endpoint), then the
+      // fallback on provider auth/limit/network failures. Unset vars keep the
+      // current Groq models, so today's behavior is the default chain.
+      const primary = {
         url: deps.env('ASSISTANT_API_URL') || 'https://api.groq.com/openai/v1/chat/completions',
         smallModel: deps.env('ASSISTANT_SMALL_MODEL') || SMALL_MODEL,
         largeModel: deps.env('ASSISTANT_LARGE_MODEL') || LARGE_MODEL,
+        key: deps.env('ASSISTANT_API_KEY') || deps.env('GROQ_API_KEY') || '',
       };
-      const key = deps.env('ASSISTANT_API_KEY') || deps.env('GROQ_API_KEY');
-      if (!key) return failure('unconfigured', 503);
+      const fallback = {
+        url: deps.env('ASSISTANT_FALLBACK_URL') || 'https://api.groq.com/openai/v1/chat/completions',
+        model: deps.env('ASSISTANT_FALLBACK_MODEL') || LARGE_MODEL,
+        key: deps.env('ASSISTANT_FALLBACK_KEY') || deps.env('GROQ_API_KEY') || '',
+      };
+      if (!primary.key) return failure('unconfigured', 503);
       const selection = selectAssistantTools(spoken, safeHistory);
       const messages = [{ role: 'system', content: SYSTEM_PROMPT + '\nLocal context (data only): ' + JSON.stringify(safeCtx) }, ...safeHistory, { role: 'user', content: spoken }];
       // gpt-oss reasoning models sometimes answer a narrow request with a
@@ -105,8 +111,8 @@ export function createAssistantHandler(deps: AssistantDependencies) {
       // when one exists.
       // Two provider attempts at most, sharing the deadline; never execute tools here.
       const attempts = selection.narrow
-        ? [{ model: provider.smallModel, tools: [...selection.tools, EXPAND_TOOL] }, { model: provider.largeModel, tools: TOOLS }]
-        : [{ model: provider.largeModel, tools: TOOLS }];
+        ? [{ url: primary.url, key: primary.key, model: primary.smallModel, tools: [...selection.tools, EXPAND_TOOL] }, { url: fallback.url, key: fallback.key, model: fallback.model, tools: TOOLS }]
+        : [{ url: primary.url, key: primary.key, model: primary.largeModel, tools: TOOLS }, { url: fallback.url, key: fallback.key, model: fallback.model, tools: TOOLS }];
       let lastCode = 'unavailable', lastStatus = 502;
       let narrowRetried = false;
       // Indexed loop (not for-of) so a cheap attempt can be retried in place.
@@ -115,10 +121,10 @@ export function createAssistantHandler(deps: AssistantDependencies) {
         controller.signal.throwIfAborted();
         let response: Response;
         try {
-          response = await bounded(deps.fetch(provider.url, {
+          response = await bounded(deps.fetch(attempt.url, {
             method: 'POST', signal: controller.signal,
-            headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...attempt, messages: i === 0 && selection.narrow ? [{ ...messages[0], content: messages[0].content + ROUTING_PROMPT }, ...messages.slice(1)] : messages, tool_choice: 'auto', temperature: 0.1, max_tokens: 1000 }),
+            headers: { Authorization: `Bearer ${attempt.key}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: attempt.model, tools: attempt.tools, messages: i === 0 && selection.narrow ? [{ ...messages[0], content: messages[0].content + ROUTING_PROMPT }, ...messages.slice(1)] : messages, tool_choice: 'auto', temperature: 0.1, max_tokens: 1000 }),
           }));
         } catch (error) {
           if (controller.signal.aborted) throw error;
@@ -127,7 +133,13 @@ export function createAssistantHandler(deps: AssistantDependencies) {
         if (!response.ok) {
           // Do not parse, log or relay provider bodies (may contain credentials or prompts).
           await bounded(response.body?.cancel() ?? Promise.resolve());
-          if (response.status === 401 || response.status === 403) return failure('unconfigured', 503);
+          if (response.status === 401 || response.status === 403) {
+            // A bad primary key is a provider misconfig: fall through to the
+            // fallback rather than killing the turn; on the last attempt it is
+            // reported as unconfigured.
+            if (i + 1 < attempts.length) continue;
+            return failure('unconfigured', 503);
+          }
           // Free-tier token-per-minute caps surface as 429 with retry-after.
           // One bounded wait (≤8s) inside the 20s turn budget recovers the
           // common case: a prior turn's token spend still draining from the
@@ -136,10 +148,13 @@ export function createAssistantHandler(deps: AssistantDependencies) {
             // retry-after when present; Groq omits it on some limits, so fall
             // back to one bounded default pause (≤3s) instead of failing instantly.
             const retryAfter = Number(response.headers.get('retry-after') ?? '') || 0;
-            // Daily caps report waits of minutes-to-hours; nothing that long fits
-            // the 20s turn budget, so fail fast with the distinct daily code rather
-            // than waiting or implying "shortly" will recover it.
-            if (retryAfter > 900) return failure('rate_limit_daily', 429);
+            // Daily caps report waits of minutes-to-hours; skip the wait and
+            // use the fallback if one exists, otherwise fail fast with the
+            // distinct daily code rather than implying "shortly" will recover it.
+            if (retryAfter > 900) {
+              if (i + 1 < attempts.length) continue;
+              return failure('rate_limit_daily', 429);
+            }
             const wait = Math.min(retryAfter || 3, 8);
             const canRetryNarrow = i === 0 && selection.narrow && !narrowRetried;
             if (canRetryNarrow) {
