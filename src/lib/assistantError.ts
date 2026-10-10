@@ -6,6 +6,7 @@ export const ASSISTANT_ERRORS = {
   network: 'AI could not connect. Check your connection and try again.',
   unconfigured: 'AI is not configured. Check the app connection and assistant service setup.',
   rate_limit: 'AI is busy or its request limit was reached. Please try again shortly.',
+  rate_limit_daily: 'The AI daily allowance is used up. It resets in a few hours; offline commands still work until then.',
   invalid_contract: 'AI returned an invalid action. Nothing was changed; please rephrase and try again.',
   unavailable: 'AI is temporarily unavailable. Please try again.',
   cancelled: 'Request stopped.',

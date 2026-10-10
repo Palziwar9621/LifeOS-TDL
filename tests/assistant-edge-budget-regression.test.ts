@@ -144,3 +144,29 @@ test('edge cancellation and deadline stop pending providers with no second reque
     assert.equal((await (await pendingTimeout).json()).code, 'network');
   } finally { t.mock.timers.reset(); }
 });
+
+test('daily-cap 429 (hours-long retry-after) fails fast as rate_limit_daily with no pointless calls or waits', async () => {
+  let count = 0;
+  const handler = fixture(async () => { count++; return new Response('SECRET provider body', { status: 429, headers: { 'retry-after': '3600' } }); });
+  const response = await handler(request());
+  assert.equal(response.status, 429);
+  assert.deepEqual(await response.json(), { error: 'Assistant request failed', code: 'rate_limit_daily' });
+  assert.equal(count, 1); // no narrow retry, no broad attempt, no wait
+});
+
+test('provider is env-configurable; defaults stay Groq when env is unset', async () => {
+  const sent: { url: string; auth?: string; model?: string }[] = [];
+  const custom = createAssistantHandler({
+    env: name => ({ SUPABASE_URL: 'https://assistant.invalid', SUPABASE_ANON_KEY: 'fixture-anon', ASSISTANT_API_KEY: 'fixture-alternative-key', ASSISTANT_API_URL: 'https://api.alternative.invalid/v1/chat/completions', ASSISTANT_SMALL_MODEL: 'alt-small', ASSISTANT_LARGE_MODEL: 'alt-large' })[name],
+    verifyUser: async () => true,
+    fetch: (url, init) => { sent.push({ url, auth: (init.headers as any).Authorization, model: JSON.parse(init.body as string).model }); return Promise.resolve(success()); },
+  });
+  const narrow = await custom(request('add task Call Sam'));
+  assert.equal(narrow.status, 200);
+  assert.equal(sent[0].url, 'https://api.alternative.invalid/v1/chat/completions');
+  assert.equal(sent[0].auth, 'Bearer fixture-alternative-key');
+  assert.equal(sent[0].model, 'alt-small');
+  const broad = await custom(request('make that one blue'));
+  assert.equal(broad.status, 200);
+  assert.equal(sent[1].model, 'alt-large');
+});

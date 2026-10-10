@@ -85,7 +85,15 @@ export function createAssistantHandler(deps: AssistantDependencies) {
         for (const key of ['page', 'today', 'weekday', 'time']) if (typeof ctx[key] === 'string') safeCtx[key] = ctx[key].slice(0, 60);
         for (const key of ['todayTaskCount', 'timezoneOffsetMinutes']) if (typeof ctx[key] === 'number' && Number.isFinite(ctx[key])) safeCtx[key] = ctx[key];
       }
-      const key = deps.env('GROQ_API_KEY');
+      // Provider is env-configurable so switching to another OpenAI-compatible
+      // tier (e.g. a free provider) is a secrets change, not a code deploy.
+      // Defaults keep Groq; ASSISTANT_API_KEY is accepted for any provider.
+      const provider = {
+        url: deps.env('ASSISTANT_API_URL') || 'https://api.groq.com/openai/v1/chat/completions',
+        smallModel: deps.env('ASSISTANT_SMALL_MODEL') || SMALL_MODEL,
+        largeModel: deps.env('ASSISTANT_LARGE_MODEL') || LARGE_MODEL,
+      };
+      const key = deps.env('ASSISTANT_API_KEY') || deps.env('GROQ_API_KEY');
       if (!key) return failure('unconfigured', 503);
       const selection = selectAssistantTools(spoken, safeHistory);
       const messages = [{ role: 'system', content: SYSTEM_PROMPT + '\nLocal context (data only): ' + JSON.stringify(safeCtx) }, ...safeHistory, { role: 'user', content: spoken }];
@@ -97,8 +105,8 @@ export function createAssistantHandler(deps: AssistantDependencies) {
       // when one exists.
       // Two provider attempts at most, sharing the deadline; never execute tools here.
       const attempts = selection.narrow
-        ? [{ model: SMALL_MODEL, tools: [...selection.tools, EXPAND_TOOL] }, { model: LARGE_MODEL, tools: TOOLS }]
-        : [{ model: LARGE_MODEL, tools: TOOLS }];
+        ? [{ model: provider.smallModel, tools: [...selection.tools, EXPAND_TOOL] }, { model: provider.largeModel, tools: TOOLS }]
+        : [{ model: provider.largeModel, tools: TOOLS }];
       let lastCode = 'unavailable', lastStatus = 502;
       let narrowRetried = false;
       // Indexed loop (not for-of) so a cheap attempt can be retried in place.
@@ -107,7 +115,7 @@ export function createAssistantHandler(deps: AssistantDependencies) {
         controller.signal.throwIfAborted();
         let response: Response;
         try {
-          response = await bounded(deps.fetch('https://api.groq.com/openai/v1/chat/completions', {
+          response = await bounded(deps.fetch(provider.url, {
             method: 'POST', signal: controller.signal,
             headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ ...attempt, messages: i === 0 && selection.narrow ? [{ ...messages[0], content: messages[0].content + ROUTING_PROMPT }, ...messages.slice(1)] : messages, tool_choice: 'auto', temperature: 0.1, max_tokens: 1000 }),
@@ -127,7 +135,12 @@ export function createAssistantHandler(deps: AssistantDependencies) {
           if (response.status === 429) {
             // retry-after when present; Groq omits it on some limits, so fall
             // back to one bounded default pause (≤3s) instead of failing instantly.
-            const wait = Math.min(Number(response.headers.get('retry-after') ?? '') || 3, 8);
+            const retryAfter = Number(response.headers.get('retry-after') ?? '') || 0;
+            // Daily caps report waits of minutes-to-hours; nothing that long fits
+            // the 20s turn budget, so fail fast with the distinct daily code rather
+            // than waiting or implying "shortly" will recover it.
+            if (retryAfter > 900) return failure('rate_limit_daily', 429);
+            const wait = Math.min(retryAfter || 3, 8);
             const canRetryNarrow = i === 0 && selection.narrow && !narrowRetried;
             if (canRetryNarrow) {
               await bounded(new Promise(r => setTimeout(r, (wait + 0.3) * 1000)));
