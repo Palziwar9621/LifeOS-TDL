@@ -7,8 +7,8 @@ param(
 # a password as an argument, write it to a file, or start a transcript here.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$inputApk = Join-Path $root 'release\LifeOS-1.3.0-aligned-unsigned.apk'
-$outputApk = Join-Path $root 'release\LifeOS-1.3.0.apk'
+$inputApk = Join-Path $root 'release\LifeOS-1.3.1-aligned-unsigned.apk'
+$outputApk = Join-Path $root 'release\LifeOS-1.3.1.apk'
 $key = Join-Path $root 'android.keystore'
 $signer = Join-Path $BuildTools 'apksigner.bat'
 $aligner = Join-Path $BuildTools 'zipalign.exe'
