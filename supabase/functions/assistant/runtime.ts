@@ -16,7 +16,7 @@ export function selectAssistantTools(spoken: string, history: History = []) {
   const text = [spoken, ...history.slice(-8).map(h => h.content)].join(' ').toLowerCase();
   const names = new Set(['navigate', 'open_capture', 'open_app', 'summarize_day', 'capabilities']);
   const groups: [RegExp, RegExp][] = [
-    [/\b(tasks?|to[ -]?dos?|priorit\w*|overdue|recurr\w*|repeat\w*)\b/, /^(?:add_task|update_task|complete_task|delete_task|query_tasks|set_reminder|set_recurrence|remove_recurrence|set_task_relationships|set_task_tag|query_task_relationships)$/],
+    [/\b(tasks?|to[ -]?dos?|priorit\w*|overdue|recurr\w*|repeat\w*|complete[sd]?|done|finish(es|ed)?|mark(ed)?|tick(ed)?)\b/, /^(?:add_task|update_task|complete_task|delete_task|query_tasks|set_reminder|set_recurrence|remove_recurrence|set_task_relationships|set_task_tag|query_task_relationships)$/],
     [/\b(notes?|memos?)\b/, /_notes?$/],
     [/\b(ideas?|brainstorm\w*)\b/, /(?:_ideas?$|^idea_to_project$)/],
     [/\b(remember|memory|memories)\b/, /_remember$/],
@@ -28,9 +28,9 @@ export function selectAssistantTools(spoken: string, history: History = []) {
     [/\b(subtasks?|sub[ -]tasks?|checklist\w*)\b/, /_subtasks?$/],
     [/\b(tags?|labels?)\b|#\w+/, /(?:_tags?$|^query_task_relationships$)/],
     [/\b(categor\w*)\b/, /(?:_category$|_categories$|^set_task_relationships$|^query_task_relationships$)/],
-    [/\b(planner|calendar|blocks?|schedule\w*|timetable)\b/, /_schedule_blocks?$/],
+    [/\b(planner|calendar|blocks?|schedule\w*|timetable|class(es)?|lessons?|lectures?|periods?|appointments?|meetings?|events?)\b/, /_schedule_blocks?$/],
   ];
-  let matched = /\b(open|navigate|capture|camera|photo|record|summari[sz]e|capabilities|help)\b/.test(text);
+  let matched = /\b(open|navigate|capture|camera|photo|record|summari[sz]e|capabilities|help)\b|\bwhat(?:'?s| is) on\b|\bmy day\b|\bagenda\b|\bwhat can (you|u)\b/.test(text);
   for (const [utterance, tools] of groups) if (utterance.test(text)) {
     matched = true;
     for (const tool of TOOLS) if (tools.test(tool.function.name)) names.add(tool.function.name);
