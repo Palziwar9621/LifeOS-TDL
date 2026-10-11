@@ -1,0 +1,9 @@
+{"spoken":"i finished the laundry","calls":[{"name":"complete_task","args":{"title_match":"Laundry"}}]}
+{"spoken":"tomorrow I have dinner at 9 PM","calls":[{"name":"add_task","args":{"title":"Dinner","due_date":"2026-10-12","due_time":"21:00","remind_me":true,"reminder_minutes":0}}]}
+{"spoken":"call mom at 5 tomorrow high priority","calls":[{"name":"add_task","args":{"title":"Call mom","due_date":"2026-10-12","due_time":"17:00","priority":"high"}}]}
+{"spoken":"move sprinkler repair to november 3rd","calls":[{"name":"reschedule_task","args":{"title_match":"Sprinkler repair","when":"specific","due_date":"2026-11-03"}}]}
+{"spoken":"i did my workout today","calls":[{"name":"complete_routine","args":{"title_match":"Gym","date":"2026-10-11","done":true}}]}
+{"spoken":"mark mom's birthday reminder done","calls":[{"name":"complete_reminder","args":{"title_match":"mom's birthday"}}]}
+{"spoken":"set a goal to read 30 books this year","calls":[{"name":"create_goal","args":{"title":"Read 30 books","deadline":"2026-12-31","horizon":"yearly"}}]}
+{"spoken":"add study block mondays 9 to 10 in blue","calls":[{"name":"add_schedule_block","args":{"title":"Study","weekday":1,"start_time":"09:00","end_time":"10:00","color":"#3b82f6"}}]}
+{"spoken":"the report belongs to the website project","calls":[{"name":"set_task_relationships","args":{"title_match":"Report","project_match":"Website"}}]}

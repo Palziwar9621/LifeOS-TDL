@@ -1,0 +1,1 @@
+{"messages":[{"role":"system","content":"PERSONA + SYSTEM_PROMPT. Local context: {\"page\":\"today\",\"today\":\"2026-10-11\",\"recentTaskTitles\":[\"Dinner\",\"Laundry\"]}"},{"role":"user","content":"i said stop"},{"note":"interrupts, never claims a committed action was undone"},{"role":"assistant","content":"Okay okay — stopped! Nothing got changed; I take hints fast, hehe."}]}

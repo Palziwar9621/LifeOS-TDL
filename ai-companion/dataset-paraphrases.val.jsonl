@@ -1,0 +1,44 @@
+{"id":"p9","family":"add_task","spoken":"uh, I need laundry","calls":[{"name":"add_task","args":{"title":"laundry","due_date":"2026-10-11","priority":"medium"}}]}
+{"id":"p21","family":"add_task","spoken":"well, new task math homework","calls":[{"name":"add_task","args":{"title":"math homework","due_date":"2026-10-11","priority":"medium"}}]}
+{"id":"p30","family":"add_task","spoken":"math homework add task","calls":[{"name":"add_task","args":{"title":"math homework","due_date":"2026-10-11","priority":"medium"}}]}
+{"id":"p32","family":"add_task","spoken":"add task math homework for me now","calls":[{"name":"add_task","args":{"title":"math homework","due_date":"2026-10-11","priority":"medium"}}]}
+{"id":"p52","family":"add_task","spoken":"grocery run","calls":[{"name":"add_task","args":{"title":"grocery run","due_date":"2026-10-11","priority":"medium"}}]}
+{"id":"p88","family":"complete_task","spoken":"laundry is done","calls":[{"name":"complete_task","args":{"title_match":"laundry"}}]}
+{"id":"p105","family":"complete_task","spoken":"well, mark math homework as done","calls":[{"name":"complete_task","args":{"title_match":"math homework"}}]}
+{"id":"p116","family":"complete_task","spoken":"finish math homework I did","calls":[{"name":"complete_task","args":{"title_match":"math homework"}}]}
+{"id":"p130","family":"complete_task","spoken":"done with call mom","calls":[{"name":"complete_task","args":{"title_match":"call mom"}}]}
+{"id":"p136","family":"complete_task","spoken":"done done call mom","calls":[{"name":"complete_task","args":{"title_match":"call mom"}}]}
+{"id":"p138","family":"complete_task","spoken":"um call mom is done I think","calls":[{"name":"complete_task","args":{"title_match":"call mom"}}]}
+{"id":"p155","family":"complete_task","spoken":"mark done grocery run ok yes","calls":[{"name":"complete_task","args":{"title_match":"grocery run"}}]}
+{"id":"p164","family":"complete_task","spoken":"mark vacuum the car complete","calls":[{"name":"complete_task","args":{"title_match":"vacuum the car"}}]}
+{"id":"p165","family":"complete_task","spoken":"so yeah, just did vacuum the car","calls":[{"name":"complete_task","args":{"title_match":"vacuum the car"}}]}
+{"id":"p176","family":"reopen_task","spoken":"reopen laundry","calls":[{"name":"update_task","args":{"title_match":"laundry","status":"planned"}}]}
+{"id":"p178","family":"reopen_task","spoken":"uncheck laundry","calls":[{"name":"update_task","args":{"title_match":"laundry","status":"planned"}}]}
+{"id":"p180","family":"reopen_task","spoken":"wasn't laundry done after all","calls":[{"name":"update_task","args":{"title_match":"laundry","status":"planned"}}]}
+{"id":"p213","family":"reopen_task","spoken":"okay so, vacuum the car not done make","calls":[{"name":"update_task","args":{"title_match":"vacuum the car","status":"planned"}}]}
+{"id":"p215","family":"reopen_task","spoken":"no vacuum the car not complete change it","calls":[{"name":"update_task","args":{"title_match":"vacuum the car","status":"planned"}}]}
+{"id":"p220","family":"delete_task","spoken":"I don't need laundry anymore","calls":[{"name":"delete_task","args":{"title_match":"laundry"}}]}
+{"id":"p230","family":"delete_task","spoken":"delete delete math homework","calls":[{"name":"delete_task","args":{"title_match":"math homework"}}]}
+{"id":"p245","family":"delete_task","spoken":"well, grocery run delete from list","calls":[{"name":"delete_task","args":{"title_match":"grocery run"}}]}
+{"id":"p246","family":"delete_task","spoken":"delete delete grocery run","calls":[{"name":"delete_task","args":{"title_match":"grocery run"}}]}
+{"id":"p254","family":"delete_task","spoken":"delete delete vacuum the car","calls":[{"name":"delete_task","args":{"title_match":"vacuum the car"}}]}
+{"id":"p279","family":"complete_routine","spoken":"call mom today tick me ok","calls":[{"name":"complete_routine","args":{"title_match":"call mom","date":"2026-10-11","done":true}}]}
+{"id":"p282","family":"complete_routine","spoken":"mark grocery run done for today","calls":[{"name":"complete_routine","args":{"title_match":"grocery run","date":"2026-10-11","done":true}}]}
+{"id":"p293","family":"complete_routine","spoken":"right so, tick vacuum the car today done","calls":[{"name":"complete_routine","args":{"title_match":"vacuum the car","date":"2026-10-11","done":true}}]}
+{"id":"p309","family":"uncomplete_routine","spoken":"um, call mom missed today sorrry","calls":[{"name":"complete_routine","args":{"title_match":"call mom","date":"2026-10-11","done":false}}]}
+{"id":"p312","family":"uncomplete_routine","spoken":"untick grocery run","calls":[{"name":"complete_routine","args":{"title_match":"grocery run","date":"2026-10-11","done":false}}]}
+{"id":"p319","family":"uncomplete_routine","spoken":"vacuum the car missed today sorrry","calls":[{"name":"complete_routine","args":{"title_match":"vacuum the car","date":"2026-10-11","done":false}}]}
+{"id":"p323","family":"add_routine_daily","spoken":"new routine gym every day","calls":[{"name":"add_routine","args":{"title":"gym","days":[0,1,2,3,4,5,6]}}]}
+{"id":"p325","family":"add_routine_daily","spoken":"okay so, gym in productivity checklist put","calls":[{"name":"add_routine","args":{"title":"gym","days":[0,1,2,3,4,5,6]}}]}
+{"id":"p332","family":"add_routine_daily","spoken":"read 20 pages in productivity checklist put","calls":[{"name":"add_routine","args":{"title":"read 20 pages","days":[0,1,2,3,4,5,6]}}]}
+{"id":"p378","family":"reschedule_next_week","spoken":"push laundry next week please","calls":[{"name":"reschedule_task","args":{"title_match":"laundry","when":"next_week"}}]}
+{"id":"p390","family":"reschedule_next_week","spoken":"call mom next week it push","calls":[{"name":"reschedule_task","args":{"title_match":"call mom","when":"next_week"}}]}
+{"id":"p414","family":"add_reminder","spoken":"remind me about call the bank at 5 pm","calls":[{"name":"add_reminder","args":{"title":"call the bank","due_at":"2026-10-11T17:00:00Z"}}]}
+{"id":"p443","family":"add_note","spoken":"laundry note add","calls":[{"name":"add_note","args":{"title":"laundry","content":""}}]}
+{"id":"p461","family":"add_note","spoken":"right so, write write call mom note","calls":[{"name":"add_note","args":{"title":"call mom","content":""}}]}
+{"id":"p466","family":"add_note","spoken":"new note grocery run","calls":[{"name":"add_note","args":{"title":"grocery run","content":""}}]}
+{"id":"p481","family":"add_idea","spoken":"hey, put laundry in my ideas","calls":[{"name":"add_idea","args":{"title":"laundry"}}]}
+{"id":"p502","family":"add_idea","spoken":"put grocery run in my ideas","calls":[{"name":"add_idea","args":{"title":"grocery run"}}]}
+{"id":"p515","family":"navigate_tasks","spoken":"show my tasks","calls":[{"name":"navigate","args":{"page":"tasks"}}]}
+{"id":"p522","family":"navigate_today_view","spoken":"show my overdue... no wait, today ones","calls":[{"name":"navigate","args":{"page":"tasks","view":"today"}}]}
+{"id":"p523","family":"navigate_today_view","spoken":"today view open in tasks","calls":[{"name":"navigate","args":{"page":"tasks","view":"today"}}]}

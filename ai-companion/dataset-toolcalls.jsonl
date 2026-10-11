@@ -1,0 +1,50 @@
+{"spoken":"i finished the laundry","calls":[{"name":"complete_task","args":{"title_match":"Laundry"}}]}
+{"spoken":"mark the laundry done","calls":[{"name":"complete_task","args":{"title_match":"Laundry"}}]}
+{"spoken":"tick off laundry","calls":[{"name":"complete_task","args":{"title_match":"Laundry"}}]}
+{"spoken":"untick gym","calls":[{"name":"complete_task","args":{"title_match":"Gym"}}]}
+{"spoken":"reopen the dentist task","calls":[{"name":"update_task","args":{"title_match":"Dentist","status":"planned"}}]}
+{"spoken":"need to grab milk","calls":[{"name":"add_task","args":{"title":"Grab milk","due_date":"2026-10-11","priority":"medium"}}]}
+{"spoken":"tomorrow I have dinner at 9 PM","calls":[{"name":"add_task","args":{"title":"Dinner","due_date":"2026-10-12","due_time":"21:00","remind_me":true,"reminder_minutes":0}}]}
+{"spoken":"call mom at 5 tomorrow high priority","calls":[{"name":"add_task","args":{"title":"Call mom","due_date":"2026-10-12","due_time":"17:00","priority":"high"}}]}
+{"spoken":"add task math homework for friday","calls":[{"name":"add_task","args":{"title":"Math homework","due_date":"2026-10-16","priority":"medium"}}]}
+{"spoken":"remind me about the dentist friday","calls":[{"name":"add_task","args":{"title":"Dentist","due_date":"2026-10-16","remind_me":true,"reminder_minutes":0}}]}
+{"spoken":"move gym to 7","calls":[{"name":"update_task","args":{"title_match":"Gym","due_time":"07:00"}}]}
+{"spoken":"push laundry to tomorrow","calls":[{"name":"reschedule_task","args":{"title_match":"Laundry","when":"tomorrow"}}]}
+{"spoken":"move that to next week","calls":[{"name":"reschedule_task","args":{"title_match":"that","when":"next_week"}}]}
+{"spoken":"move sprinkler repair to november 3rd","calls":[{"name":"reschedule_task","args":{"title_match":"Sprinkler repair","when":"specific","due_date":"2026-11-03"}}]}
+{"spoken":"make the homework urgent","calls":[{"name":"update_task","args":{"title_match":"math homework","priority":"urgent"}}]}
+{"spoken":"i did my workout today","calls":[{"name":"complete_routine","args":{"title_match":"Gym","date":"2026-10-11","done":true}}]}
+{"spoken":"didn't do laundry today","calls":[{"name":"complete_routine","args":{"title_match":"Laundry","date":"2026-10-11","done":false}}]}
+{"spoken":"gym every monday and wednesday at 7 am in my routine","calls":[{"name":"add_routine","args":{"title":"Gym","days":[1,3],"time_of_day":"07:00"}}]}
+{"spoken":"add water the plants to my daily checklist","calls":[{"name":"add_routine","args":{"title":"Water the plants","days":[0,1,2,3,4,5,6]}}]}
+{"spoken":"gym should be at 8 now","calls":[{"name":"update_routine","args":{"title_match":"Gym","time_of_day":"08:00"}}]}
+{"spoken":"stop tracking the juice cleanse routine","calls":[{"name":"delete_routine","args":{"title_match":"Juice cleanse"}}]}
+{"spoken":"set a reminder for the 3rd of november at 2 pm to call the bank","calls":[{"name":"add_reminder","args":{"title":"Call the bank","due_at":"2026-11-03T14:00:00"}}]}
+{"spoken":"snooze that 10 minutes","calls":[{"name":"snooze_reminder","args":{"title_match":"that","minutes":10}}]}
+{"spoken":"mark mom's birthday reminder done","calls":[{"name":"complete_reminder","args":{"title_match":"mom's birthday"}}]}
+{"spoken":"wake me up for the trash bins on mondays at 8","calls":[{"name":"add_reminder","args":{"title":"Trash bins","due_at":"2026-10-12T08:00:00","recurrence":"weekly"}}]}
+{"spoken":"take a note about the interview that says bring printed resume","calls":[{"name":"add_note","args":{"title":"Interview","content":"bring printed resume"}}]}
+{"spoken":"write down my wifi password is 1234","calls":[{"name":"add_remember","args":{"title":"WiFi password","content":"1234"}}]}
+{"spoken":"new idea build an ai attendance system","calls":[{"name":"add_idea","args":{"title":"Build AI Attendance System"}}]}
+{"spoken":"capture an idea with the camera","calls":[{"name":"open_capture","args":{}}]}
+{"spoken":"turn the mural idea into a project","calls":[{"name":"idea_to_project","args":{"title_match":"Mural"}}]}
+{"spoken":"start a photography project","calls":[{"name":"create_project","args":{"name":"Photography"}}]}
+{"spoken":"the photography project is done","calls":[{"name":"update_project","args":{"name_match":"Photography","status":"completed"}}]}
+{"spoken":"add buy tripod milestone to the photography project due the 20th","calls":[{"name":"add_milestone","args":{"scope":"project","name_match":"Photography","title":"Buy tripod","due_date":"2026-10-20"}}]}
+{"spoken":"set a goal to read 30 books this year","calls":[{"name":"create_goal","args":{"title":"Read 30 books","deadline":"2026-12-31","horizon":"yearly"}}]}
+{"spoken":"how am I doing","calls":[{"name":"query_stats","args":{"scope":"overview"}}]}
+{"spoken":"what are my stats this week","calls":[{"name":"query_stats","args":{"scope":"week"}}]}
+{"spoken":"what's on today","calls":[{"name":"summarize_day","args":{}}]}
+{"spoken":"open calendar","calls":[{"name":"navigate","args":{"page":"calendar"}}]}
+{"spoken":"open my overdue tasks","calls":[{"name":"navigate","args":{"page":"tasks","view":"overdue"}}]}
+{"spoken":"show my notes","calls":[{"name":"navigate","args":{"page":"library","tab":"notes"}}]}
+{"spoken":"add study block mondays 9 to 10 in blue","calls":[{"name":"add_schedule_block","args":{"title":"Study","weekday":1,"start_time":"09:00","end_time":"10:00","color":"#3b82f6"}}]}
+{"spoken":"what tasks do I have today","calls":[{"name":"query_tasks","args":{"date_range":"today"}}]}
+{"spoken":"what notes start with groceries","calls":[{"name":"query_notes","args":{"title_contains":"groceries"}}]}
+{"spoken":"what's next week look like","calls":[{"name":"query_tasks","args":{"date_range":"this_week"}}]}
+{"spoken":"attach the work tag to the report","calls":[{"name":"set_task_tag","args":{"title_match":"Report","tag_match":"Work","attached":true}}]}
+{"spoken":"the report belongs to the website project","calls":[{"name":"set_task_relationships","args":{"title_match":"Report","project_match":"Website"}}]}
+{"spoken":"create a category called health in green","calls":[{"name":"create_category","args":{"name":"health","color":"#10b981"}}]}
+{"spoken":"add milk and remind me to call Sam at 6","calls":[{"name":"add_task","args":{"title":"Milk","due_date":"2026-10-11","priority":"medium"}},{"name":"add_task","args":{"title":"Call Sam","due_date":"2026-10-11","due_time":"18:00","remind_me":true,"reminder_minutes":0}}]}
+{"spoken":"delete task dentist","calls":[{"name":"delete_task","args":{"title_match":"Dentist"}}]}
+{"spoken":"what can you do","calls":[{"name":"capabilities","args":{}}]}

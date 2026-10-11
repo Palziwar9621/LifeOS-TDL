@@ -14,8 +14,8 @@ export interface AppContext {
   weekday: string;
   time: string;
   timezoneOffsetMinutes?: number;
-  projects: { id: string; name: string }[];
-  categories: { id: string; name: string }[];
+  projects: string[];
+  categories: string[];
   recentTaskTitles: string[];
   todayTaskCount: number;
   routines: string[];

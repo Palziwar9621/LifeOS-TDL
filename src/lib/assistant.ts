@@ -12,6 +12,7 @@ export type AssistantIntent =
   | { kind: 'delete_task' | 'delete_reminder' | 'delete_note'; title_match: string }
   | { kind: 'navigate'; page: string }
   | { kind: 'summarize_day' }
+  | { kind: 'summarize_stats' }
   | { kind: 'stop'; mode: 'end' | 'interrupt' }
   | { kind: 'unknown'; text: string };
 
@@ -105,6 +106,11 @@ export function parseCommand(spoken: string): AssistantIntent {
   // "what's on my day" / "summarize my day"
   if (/\b(what('| i)?s|show|tell me).*(day|today|schedule|planned)\b/.test(t) || /\bsummarize\b/.test(t)) {
     return { kind: 'summarize_day' };
+  }
+
+  // "how am I doing" / "show my stats" / "my progress"
+  if (/\b(how (?:am|did) (?:i|we) doing|my stats|statistics|my progress|completion rate)\b/.test(t)) {
+    return { kind: 'summarize_stats' };
   }
 
   // "open calendar" / "go to tasks"

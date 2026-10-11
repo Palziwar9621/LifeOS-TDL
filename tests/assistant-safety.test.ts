@@ -51,9 +51,15 @@ test('tool schemas reject unknown controls, unknown patches, malformed times and
     { name: 'add_schedule_block', args: { title: 'Night', weekday: 1, start_time: '23:00', end_time: '01:00' } },
     { name: 'update_schedule_block', args: { title_match: 'Block', match_weekday: 1 } },
     { name: 'snooze_reminder', args: { title_match: 'Reminder', minutes: -10 } },
+    { name: 'complete_routine', args: { title_match: 'Gym', date: '10/10/2026' } },
+    { name: 'complete_routine', args: { title_match: 'Gym', done: 'yes' } },
   ];
   for (const call of invalid) assert.throws(() => validateToolCall(call), undefined, call.name);
   assert.equal(validateToolCall({ name: 'update_milestone', args: { scope: 'project', name_match: 'Garden', title_match: 'Dig', done: false, due_date: null } }).args.done, false);
+  const routine = validateToolCall({ name: 'complete_routine', args: { title_match: 'Gym', done: false, date: '2026-10-09' } });
+  assert.equal(routine.args.done, false);
+  assert.equal(routine.args.date, '2026-10-09');
+  assert.equal(validateToolCall({ name: 'complete_routine', args: { title_match: 'Gym' } }).args.title_match, 'Gym');
   const names = TOOLS.map(t => t.function.name);
   assert.equal(new Set(names).size, names.length);
   const reminderSchema = TOOLS.find(t => t.function.name === 'update_reminder')!.function.parameters.properties.recurrence;

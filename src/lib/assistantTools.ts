@@ -2,6 +2,7 @@ import * as db from './db';
 import { todayStr } from './dates';
 import { matchOne } from './assistantSafety';
 import { validateToolCall, UNSUPPORTED_CONTROLS, type ToolCall } from '../../supabase/functions/assistant/contract';
+import { clearTutorialProgress } from '../app/tutorialState';
 
 type Row = { id: string; title?: string; name?: string; deleted?: boolean; archived?: boolean; [key: string]: any };
 const label = (r: Row) => r.title ?? r.name ?? '';
@@ -20,15 +21,15 @@ export async function runAssistantTool(input: ToolCall, ctx: { navigate: (page: 
   const s = db.dbState();
   // These explicit adapters are the entire write surface. No model-chosen tables,
   // IDs, settings, database methods or arbitrary patches are accepted.
-  const adapters: Record<string, { rows: Row[]; create: (p: any) => Promise<any>; update: (id: string, p: any) => Promise<void>; remove: (id: string) => Promise<any> }> = {
-    task: { rows: live(s.tasks), create: db.createTask, update: db.updateTask, remove: db.deleteTask },
-    note: { rows: live(s.notes), create: db.createNote, update: db.updateNote, remove: db.deleteNote },
-    idea: { rows: live(s.ideas), create: db.createIdea, update: db.updateIdea, remove: db.deleteIdea },
-    remember: { rows: live(s.remember_items), create: db.createRememberItem, update: db.updateRememberItem, remove: db.deleteRememberItem },
-    reminder: { rows: live(s.reminders), create: db.createReminder, update: db.updateReminder, remove: db.deleteReminder },
-    routine: { rows: live(s.routine_tasks), create: db.createRoutineTask, update: db.updateRoutineTask, remove: db.deleteRoutineTask },
-    project: { rows: live(s.projects), create: db.createProject, update: db.updateProject, remove: db.deleteProject },
-    goal: { rows: live(s.goals), create: db.createGoal, update: db.updateGoal, remove: db.deleteGoal },
+  const adapters: Record<string, { rows: Row[]; fullRows?: Row[]; create: (p: any) => Promise<any>; update: (id: string, p: any) => Promise<void>; remove: (id: string) => Promise<any> }> = {
+    task: { rows: live(s.tasks), fullRows: s.tasks.filter(r => !r.deleted), create: db.createTask, update: db.updateTask, remove: db.deleteTask },
+    note: { rows: live(s.notes), fullRows: s.notes.filter(r => !r.deleted), create: db.createNote, update: db.updateNote, remove: db.deleteNote },
+    idea: { rows: live(s.ideas), fullRows: s.ideas.filter(r => !r.deleted), create: db.createIdea, update: db.updateIdea, remove: db.deleteIdea },
+    remember: { rows: live(s.remember_items), fullRows: s.remember_items.filter(r => !r.deleted), create: db.createRememberItem, update: db.updateRememberItem, remove: db.deleteRememberItem },
+    reminder: { rows: live(s.reminders), fullRows: s.reminders.filter(r => !r.deleted), create: db.createReminder, update: db.updateReminder, remove: db.deleteReminder },
+    routine: { rows: live(s.routine_tasks), fullRows: s.routine_tasks.slice(), create: db.createRoutineTask, update: db.updateRoutineTask, remove: db.deleteRoutineTask },
+    project: { rows: live(s.projects), fullRows: s.projects.slice(), create: db.createProject, update: db.updateProject, remove: db.deleteProject },
+    goal: { rows: live(s.goals), fullRows: s.goals.slice(), create: db.createGoal, update: db.updateGoal, remove: db.deleteGoal },
   };
   const get = (kind: string, query: string) => matchOne(adapters[kind].rows, query, label);
   const category = (query: string) => matchOne(s.categories, query, c => c.name);
@@ -173,6 +174,17 @@ export async function runAssistantTool(input: ToolCall, ctx: { navigate: (page: 
     return listReply(rows, kind === 'remember' ? 'remember items' : `${kind}s`);
   }
   const op = name.match(/^(add|create|update|delete)_(task|note|idea|remember|reminder|routine|project|goal)$/);
+  // Relationship fields arrive as name matches; resolve them to IDs before any write.
+  const resolveLinks = (kind: string, patch: Record<string, any>) => {
+    const links: Record<string, [string, string]> = kind === 'note'
+      ? { linked_task_match: ['linked_task_id', 'task'], linked_project_match: ['linked_project_id', 'project'], linked_goal_match: ['linked_goal_id', 'goal'] }
+      : kind === 'reminder' ? { task_match: ['task_id', 'task'] } : {};
+    for (const [matchKey, [idKey, targetKind]] of Object.entries(links)) if (matchKey in patch) {
+      patch[idKey] = patch[matchKey] === null ? null : get(targetKind, patch[matchKey]).id;
+      delete patch[matchKey];
+    }
+    return patch;
+  };
   if (op) {
     const [, action, kind] = op;
     const adapter = adapters[kind];
@@ -185,11 +197,15 @@ export async function runAssistantTool(input: ToolCall, ctx: { navigate: (page: 
         patch.remind_me = a.remind_me ?? !!a.due_time;
         patch.reminder_minutes = patch.remind_me ? a.reminder_minutes ?? 0 : null;
       }
-      const row = await adapter.create(patch);
+      const row = await adapter.create(resolveLinks(kind, patch));
       if (['task','reminder','routine'].includes(kind)) alarmRefresh();
       return `Added ${kind}: ${describe(row)}.`;
     }
-    const row = get(kind, a.title_match ?? a.name_match);
+    // Archived rows are hidden from matching; an unarchive or reopen request
+    // must search the full table to find them.
+    const fullRows: Row[] = (adapters[kind] as any).fullRows ?? adapter.rows;
+    const reopening = a.archived === false || (typeof a.status === 'string' && a.status !== 'archived');
+    const row = matchOne(reopening ? fullRows : adapter.rows, a.title_match ?? a.name_match, label);
     if (action === 'delete') {
       await adapter.remove(row.id);
       if (['task','reminder','routine'].includes(kind)) alarmRefresh();
@@ -197,6 +213,7 @@ export async function runAssistantTool(input: ToolCall, ctx: { navigate: (page: 
     }
     const patch = { ...a };
     delete patch.title_match; delete patch.name_match;
+    resolveLinks(kind, patch);
     if ('new_title' in patch) { patch.title = patch.new_title; delete patch.new_title; }
     if ('new_name' in patch) { patch.name = patch.new_name; delete patch.new_name; }
     if (kind === 'routine') {
@@ -215,6 +232,16 @@ export async function runAssistantTool(input: ToolCall, ctx: { navigate: (page: 
     if (['task','reminder','routine'].includes(kind)) alarmRefresh();
     return `Updated ${kind}: ${describe({ ...row, ...patch })}.`;
   }
+  // The Productivity checklist is routine_completions, not task status — a
+  // "ticked/did/didn't" request must toggle today's completion row.
+  if (name === 'complete_routine') {
+    const routine = get('routine', a.title_match);
+    const date = a.date ?? todayStr();
+    const done = a.done ?? true;
+    const already = s.routine_completions.some(c => c.task_id === routine.id && c.done_date === date);
+    if (already !== done) await db.toggleRoutineCompletion(routine.id, date);
+    return done ? `Ticked “${label(routine)}” for ${date}.` : `Unticked “${label(routine)}” for ${date}.`;
+  }
   if (['complete_task', 'set_reminder', 'set_recurrence', 'remove_recurrence'].includes(name)) {
     const task = get('task', a.title_match);
     let patch: Record<string, any>;
@@ -231,6 +258,56 @@ export async function runAssistantTool(input: ToolCall, ctx: { navigate: (page: 
     if (name === 'set_recurrence') return `“${label(task)}” now repeats ${a.rule}.`;
     if (name === 'remove_recurrence') return `“${label(task)}” no longer repeats.`;
     return `Completed “${label(task)}”.`;
+  }
+  if (name === 'query_stats') {
+    void name;
+    const { computeStats } = await import('./stats');
+    const st = computeStats();
+    const scope = a.scope ?? 'overview';
+    if (scope === 'day') return `Today: ${st.todayCount} completed, ${st.overdueCount} overdue, ${st.inboxCount} in the inbox, and ${st.focusMinutesToday} focus minutes.`;
+    if (scope === 'week') return `This week: ${st.weekCount} completed, ${st.overdueCount} overdue, ${st.inboxCount} in the inbox, and ${st.focusMinutesWeek} focus minutes.`;
+    if (scope === 'month') return `This month: ${st.monthCount} completed; overall completion rate ${st.completionRate}%.`;
+    const routine = st.routine.totalTasks ? ` Routine: ${st.routine.doneToday}/${st.routine.scheduledToday} done today (${st.routine.todayPct}%), ${st.routine.streak}-day all-done streak, ${st.routine.totalTasks} active.` : '';
+    return `Overview — today ${st.todayCount}, this week ${st.weekCount}, this month ${st.monthCount}, completion rate ${st.completionRate}%, ${st.overdueCount} overdue, ${st.inboxCount} in the inbox, ${st.focusMinutesToday}/${st.focusMinutesWeek} focus minutes today/week.${routine}`;
+  }
+  if (name === 'reschedule_task') {
+    const task = get('task', a.title_match);
+    const today = todayStr();
+    const localDate = (offset: number) => { const d = new Date(); d.setDate(d.getDate() + offset); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+    const to = a.when === 'next_week' ? localDate(7) : a.when === 'today' ? today : a.when === 'tomorrow' ? localDate(1) : a.due_date;
+    if (!to) throw new Error('Which day should I move it to?');
+    if ((task.due_date ?? '') === to) return `“${label(task)}” is already scheduled for ${to}. Nothing changed.`;
+    await db.updateTask(task.id, { due_date: to, status: task.status === 'completed' ? 'planned' : task.status } as any);
+    alarmRefresh();
+    return `Moved “${label(task)}” ${to === today ? 'to today' : to === localDate(1) ? 'to tomorrow' : `to ${to}`}.`;
+  }
+  if (name === 'duplicate_task') {
+    const task = get('task', a.title_match);
+    const copy = await db.duplicateTask(task.id);
+    if (!copy) throw new Error('That task could not be duplicated.');
+    return `Duplicated “${label(task)}”${copy.due_date ? ` — the copy is also dated ${copy.due_date}` : ''}.`;
+  }
+  if (name === 'search_all') {
+    const q = (a.query as string).toLowerCase();
+    const pools: [string, Row[]][] = [['tasks', adapters.task.rows], ['notes', adapters.note.rows], ['ideas', adapters.idea.rows], ['remember items', adapters.remember.rows], ['routines', adapters.routine.rows], ['reminders', adapters.reminder.rows], ['planner blocks', live(s.schedule_blocks)], ['projects', adapters.project.rows], ['goals', adapters.goal.rows]];
+    const hits = pools.map(([noun, rows]) => [noun, rows.filter(r => label(r).toLowerCase().includes(q))] as const).filter(([, rows]) => rows.length > 0);
+    if (!hits.length) return `Nothing found for “${a.query}”.`;
+    const total = hits.reduce((n, [, rows]) => n + rows.length, 0);
+    return `Found ${total} match${total === 1 ? '' : 'es'} for “${a.query}”: ${hits.map(([noun, rows]) => `${rows.length} ${noun} (${rows.slice(0, 4).map(label).join(', ')})`).join('; ')}.`;
+  }
+  if (name === 'summarize_week') {
+    const localDate = (offset: number) => { const d = new Date(); d.setDate(d.getDate() + offset); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+    const weekAgo = localDate(-7), weekAhead = localDate(7), today = todayStr();
+    const done = s.tasks.filter(t => !t.deleted && t.status === 'completed' && (t.completed_at_date ?? '') >= weekAgo && (t.completed_at_date ?? '') <= today);
+    const upcoming = s.tasks.filter(t => !t.deleted && !t.archived && t.status !== 'completed' && t.due_date && t.due_date > today && t.due_date <= weekAhead).sort((x, y) => (x.due_date ?? '').localeCompare(y.due_date ?? ''));
+    const dueReminders = s.reminders.filter(r => !r.deleted && !r.done && r.due_at.slice(0, 10) > today && r.due_at.slice(0, 10) <= weekAhead);
+    return `Last 7 days: ${done.length} completed${done.length ? ` (${done.slice(0, 5).map(label).join(', ')})` : ''}. Next 7 days: ${upcoming.length} scheduled task${upcoming.length === 1 ? '' : 's'}${upcoming.length ? ` (${upcoming.slice(0, 5).map(describe).join('; ')})` : ''} and ${dueReminders.length} reminder${dueReminders.length === 1 ? '' : 's'}.`;
+  }
+  if (name === 'reset_tutorial') {
+    const uid = db.currentUserId();
+    if (!uid) throw new Error('Sign in first, then I can restart the tutorial.');
+    clearTutorialProgress(uid);
+    return 'Tutorial reset. It will guide you again next time you open the app.';
   }
   if (name === 'idea_to_project') {
     const idea = get('idea', a.title_match);
@@ -252,6 +329,6 @@ export async function runAssistantTool(input: ToolCall, ctx: { navigate: (page: 
     const reminders = adapters.reminder.rows.filter(r => !r.done && new Date(r.due_at).toDateString() === new Date().toDateString());
     return `Today you have ${tasks.length} outstanding tasks and ${reminders.length} reminders.${tasks.length ? ' ' + tasks.slice(0,5).map(describe).join('; ') + '.' : ''}`;
   }
-  if (name === 'capabilities') return `I can add, find, edit and delete tasks, subtasks, notes, ideas, remember items, reminders, routines, projects, goals, milestones, tags, categories and planner blocks. I can manage task recurrence and relationships, attach or detach task tags, snooze reminders, complete one-off reminders, convert ideas to projects and open app pages. ${UNSUPPORTED_CONTROLS}`;
+  if (name === 'capabilities') return `I can add, find, edit, duplicate, archive and delete tasks, subtasks, notes, ideas, remember items, reminders, routines, projects, goals, milestones, tags, categories and planner blocks. I can search everything, manage task recurrence and relationships, attach or detach task tags, snooze reminders, complete one-off reminders, convert ideas to projects and open app pages. ${UNSUPPORTED_CONTROLS}`;
   throw new Error('That control is not supported.');
 }

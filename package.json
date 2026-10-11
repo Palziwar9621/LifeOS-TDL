@@ -10,7 +10,7 @@
     "preview": "vite preview --host",
     "deploy:cf": "npm run build && npx wrangler pages deploy",
     "typecheck": "tsc --noEmit",
-    "test": "node --import ./tests/register.mjs --test \"tests/**/*.test.ts\""
+    "test": "node --import ./tests/register.mjs --experimental-test-module-mocks --test \"tests/**/*.test.ts\""
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

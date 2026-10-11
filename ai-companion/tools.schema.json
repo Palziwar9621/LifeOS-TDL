@@ -1,0 +1,2053 @@
+[
+ {
+  "type": "function",
+  "function": {
+   "name": "add_task",
+   "description": "Create one regular task (lives in Today/Tasks; completed with complete_task). Resolve dates locally; ask if time is ambiguous.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "due_date": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "format": "date"
+     },
+     "due_time": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+     },
+     "priority": {
+      "type": "string",
+      "enum": [
+       "low",
+       "medium",
+       "high",
+       "urgent"
+      ]
+     },
+     "remind_me": {
+      "type": "boolean"
+     },
+     "reminder_minutes": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10080
+     },
+     "project_hint": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [
+     "title"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "update_task",
+   "description": "Rename, reschedule, reprioritize or reopen/complete one task. Null clears date/time.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "new_title": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "due_date": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "format": "date"
+     },
+     "due_time": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+     },
+     "priority": {
+      "type": "string",
+      "enum": [
+       "low",
+       "medium",
+       "high",
+       "urgent"
+      ]
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "inbox",
+       "planned",
+       "in_progress",
+       "completed",
+       "cancelled"
+      ]
+     }
+    },
+    "required": [
+     "title_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "complete_task",
+   "description": "Complete one regular task — \"mark done\", \"mark as done\", \"tick\", \"tick off\", \"check off\", \"mark complete\" all mean this.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [
+     "title_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "delete_task",
+   "description": "Delete one task only on explicit request.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [
+     "title_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "set_reminder",
+   "description": "Enable/disable reminder preference on one existing task. Does not guarantee OS alarm delivery.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "remind_me": {
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "title_match",
+     "remind_me"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "set_recurrence",
+   "description": "Repeat one existing task.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "rule": {
+      "type": "string",
+      "enum": [
+       "daily",
+       "weekdays",
+       "weekly",
+       "monthly",
+       "yearly"
+      ]
+     },
+     "days": {
+      "type": "array",
+      "items": {
+       "type": "integer",
+       "minimum": 0,
+       "maximum": 6
+      }
+     }
+    },
+    "required": [
+     "title_match",
+     "rule"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "remove_recurrence",
+   "description": "Stop repeating one task, not the conversation.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [
+     "title_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "query_tasks",
+   "description": "Read task titles, dates, times and status; never infer from incomplete context.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_contains": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "date": {
+      "type": "string",
+      "format": "date"
+     },
+     "date_range": {
+      "type": "string",
+      "enum": [
+       "today",
+       "tomorrow",
+       "this_week",
+       "overdue",
+       "all"
+      ]
+     }
+    },
+    "required": [],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "add_note",
+   "description": "Create a note.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "content": {
+      "type": "string",
+      "maxLength": 2000
+     }
+    },
+    "required": [
+     "title"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "update_note",
+   "description": "Update only the supplied fields of one note.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "new_title": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "content": {
+      "type": "string",
+      "maxLength": 2000
+     },
+     "pinned": {
+      "type": "boolean"
+     },
+     "favorite": {
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "title_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "delete_note",
+   "description": "Delete one note, only on explicit request.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [
+     "title_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "query_notes",
+   "description": "List matching note titles and metadata. Private body text is not sent to the model.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_contains": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "add_idea",
+   "description": "Create a idea.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "description": {
+      "type": "string",
+      "maxLength": 2000
+     }
+    },
+    "required": [
+     "title"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "update_idea",
+   "description": "Update only the supplied fields of one idea.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "new_title": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "description": {
+      "type": "string",
+      "maxLength": 2000
+     },
+     "priority": {
+      "type": "string",
+      "enum": [
+       "low",
+       "medium",
+       "high",
+       "urgent"
+      ]
+     }
+    },
+    "required": [
+     "title_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "delete_idea",
+   "description": "Delete one idea, only on explicit request.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [
+     "title_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "query_ideas",
+   "description": "List matching idea titles and metadata. Private body text is not sent to the model.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_contains": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "add_remember",
+   "description": "Create a remember.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "content": {
+      "type": "string",
+      "maxLength": 2000
+     }
+    },
+    "required": [
+     "title"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "update_remember",
+   "description": "Update only the supplied fields of one remember.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "new_title": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "content": {
+      "type": "string",
+      "maxLength": 2000
+     },
+     "pinned": {
+      "type": "boolean"
+     },
+     "favorite": {
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "title_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "delete_remember",
+   "description": "Delete one remember, only on explicit request.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [
+     "title_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "query_remember",
+   "description": "List matching remember titles and metadata. Private body text is not sent to the model.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_contains": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "add_reminder",
+   "description": "Create a reminder.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "due_at": {
+      "type": "string",
+      "format": "date-time"
+     },
+     "recurrence": {
+      "type": "string",
+      "enum": [
+       "daily",
+       "weekdays",
+       "weekly",
+       "monthly",
+       "yearly"
+      ]
+     }
+    },
+    "required": [
+     "title",
+     "due_at"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "update_reminder",
+   "description": "Update only the supplied fields of one reminder. done=true ends the whole reminder; use only for an explicit request to end it, not complete a recurring occurrence.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "new_title": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "due_at": {
+      "type": "string",
+      "format": "date-time"
+     },
+     "recurrence": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "enum": [
+       "daily",
+       "weekdays",
+       "weekly",
+       "monthly",
+       "yearly",
+       null
+      ]
+     },
+     "done": {
+      "type": "boolean"
+     },
+     "priority": {
+      "type": "string",
+      "enum": [
+       "low",
+       "medium",
+       "high",
+       "urgent"
+      ]
+     }
+    },
+    "required": [
+     "title_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "delete_reminder",
+   "description": "Delete one reminder, only on explicit request.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [
+     "title_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "query_reminders",
+   "description": "List matching reminder titles and metadata. Private body text is not sent to the model.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_contains": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "add_routine",
+   "description": "Create a routine — a repeating item on the Productivity page daily checklist. Needs days (weekdays) or extra_date (one specific day).",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "days": {
+      "type": "array",
+      "items": {
+       "type": "integer",
+       "minimum": 0,
+       "maximum": 6
+      }
+     },
+     "extra_date": {
+      "type": "string",
+      "format": "date"
+     },
+     "time_of_day": {
+      "type": "string",
+      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+     }
+    },
+    "required": [
+     "title"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "update_routine",
+   "description": "Update only the supplied fields of one routine.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "new_title": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "days": {
+      "type": "array",
+      "items": {
+       "type": "integer",
+       "minimum": 0,
+       "maximum": 6
+      }
+     },
+     "extra_date": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "format": "date"
+     },
+     "time_of_day": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+     }
+    },
+    "required": [
+     "title_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "delete_routine",
+   "description": "Delete one routine, only on explicit request.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [
+     "title_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "query_routines",
+   "description": "List matching routine titles and metadata. Private body text is not sent to the model.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_contains": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "complete_routine",
+   "description": "Tick (done=true, default) or untick (done=false) one routine on the Productivity daily checklist for date (default today). Routines are Productivity-page items, not regular tasks.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "date": {
+      "type": "string",
+      "format": "date"
+     },
+     "done": {
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "title_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "idea_to_project",
+   "description": "Convert one idea to a project.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [
+     "title_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "create_project",
+   "description": "Create a project.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "description": {
+      "type": "string",
+      "maxLength": 2000
+     },
+     "target_date": {
+      "type": "string",
+      "format": "date"
+     }
+    },
+    "required": [
+     "name"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "update_project",
+   "description": "Rename or change description, target date, priority or status of one project.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "name_match": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "new_name": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "description": {
+      "type": "string",
+      "maxLength": 2000
+     },
+     "target_date": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "format": "date"
+     },
+     "priority": {
+      "type": "string",
+      "enum": [
+       "low",
+       "medium",
+       "high",
+       "urgent"
+      ]
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "idea",
+       "planning",
+       "active",
+       "on_hold",
+       "completed"
+      ]
+     }
+    },
+    "required": [
+     "name_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "delete_project",
+   "description": "Delete one project and its milestones; keeps tasks but unlinks them.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "name_match": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [
+     "name_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "query_projects",
+   "description": "List matching project names, status and target date.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_contains": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "create_goal",
+   "description": "Create a goal.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "description": {
+      "type": "string",
+      "maxLength": 2000
+     },
+     "deadline": {
+      "type": "string",
+      "format": "date"
+     },
+     "horizon": {
+      "type": "string",
+      "enum": [
+       "long_term",
+       "yearly",
+       "monthly",
+       "weekly"
+      ]
+     }
+    },
+    "required": [
+     "title"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "update_goal",
+   "description": "Rename or change description, deadline, horizon, progress or status of one goal.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "new_title": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "description": {
+      "type": "string",
+      "maxLength": 2000
+     },
+     "deadline": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "format": "date"
+     },
+     "horizon": {
+      "type": "string",
+      "enum": [
+       "long_term",
+       "yearly",
+       "monthly",
+       "weekly"
+      ]
+     },
+     "progress": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "active",
+       "completed"
+      ]
+     }
+    },
+    "required": [
+     "title_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "delete_goal",
+   "description": "Delete one goal and its milestones; keeps tasks but unlinks them.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [
+     "title_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "query_goals",
+   "description": "List matching goals with progress and deadlines.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_contains": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "add_milestone",
+   "description": "Add a project or goal milestone. Only project milestones support due_date.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "scope": {
+      "type": "string",
+      "enum": [
+       "project",
+       "goal"
+      ]
+     },
+     "name_match": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "title": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "due_date": {
+      "type": "string",
+      "format": "date"
+     }
+    },
+    "required": [
+     "scope",
+     "name_match",
+     "title"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "update_milestone",
+   "description": "Rename, complete or reopen a milestone. Only project milestones support due_date.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "scope": {
+      "type": "string",
+      "enum": [
+       "project",
+       "goal"
+      ]
+     },
+     "name_match": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "new_title": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "due_date": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "format": "date"
+     },
+     "done": {
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "scope",
+     "name_match",
+     "title_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "complete_milestone",
+   "description": "Complete a milestone under a uniquely named project or goal.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "scope": {
+      "type": "string",
+      "enum": [
+       "project",
+       "goal"
+      ]
+     },
+     "name_match": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [
+     "scope",
+     "name_match",
+     "title_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "delete_milestone",
+   "description": "Delete one milestone on explicit request.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "scope": {
+      "type": "string",
+      "enum": [
+       "project",
+       "goal"
+      ]
+     },
+     "name_match": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [
+     "scope",
+     "name_match",
+     "title_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "query_milestones",
+   "description": "Read milestones only within the specified project or goal.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "scope": {
+      "type": "string",
+      "enum": [
+       "project",
+       "goal"
+      ]
+     },
+     "name_match": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [
+     "scope",
+     "name_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "add_subtask",
+   "description": "Add a subtask under one uniquely matched task.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "task_match": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "title": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [
+     "task_match",
+     "title"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "query_subtasks",
+   "description": "List subtasks and completion state within one task.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "task_match": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [
+     "task_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "update_subtask",
+   "description": "Rename or complete/reopen one subtask within one task.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "task_match": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "new_title": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "done": {
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "task_match",
+     "title_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "delete_subtask",
+   "description": "Delete one subtask within one task, on explicit request.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "task_match": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [
+     "task_match",
+     "title_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "create_tag",
+   "description": "Create a tag by name. Existing tags are reused. Color is #RRGGBB.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "color": {
+      "type": "string",
+      "pattern": "^#[0-9a-fA-F]{6}$"
+     }
+    },
+    "required": [
+     "name"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "query_tags",
+   "description": "List tag names and colors.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "name_contains": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "update_tag",
+   "description": "Rename or recolor one uniquely matched tag; cannot merge duplicate names.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "name_match": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "new_name": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "color": {
+      "type": "string",
+      "pattern": "^#[0-9a-fA-F]{6}$"
+     }
+    },
+    "required": [
+     "name_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "delete_tag",
+   "description": "Delete one tag and its task-tag links, keeping tasks.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "name_match": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [
+     "name_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "create_category",
+   "description": "Create a category by name. Existing tags are reused. Color is #RRGGBB.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "color": {
+      "type": "string",
+      "pattern": "^#[0-9a-fA-F]{6}$"
+     }
+    },
+    "required": [
+     "name"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "query_categories",
+   "description": "List category names and colors.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "name_contains": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "update_category",
+   "description": "Rename or recolor one uniquely matched category; cannot merge duplicate names.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "name_match": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "new_name": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "color": {
+      "type": "string",
+      "pattern": "^#[0-9a-fA-F]{6}$"
+     }
+    },
+    "required": [
+     "name_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "delete_category",
+   "description": "Delete one unused, non-default category. Reassign linked tasks/blocks first.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "name_match": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [
+     "name_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "add_schedule_block",
+   "description": "Create a recurring weekly planner/calendar block. Times must be same-day, end after start. weekday is 0=Sun..6=Sat.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "weekday": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 6
+     },
+     "start_time": {
+      "type": "string",
+      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+     },
+     "end_time": {
+      "type": "string",
+      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+     },
+     "recurrence": {
+      "type": "string",
+      "enum": [
+       "weekly",
+       "even_weeks",
+       "odd_weeks",
+       "daily"
+      ]
+     },
+     "color": {
+      "type": "string",
+      "pattern": "^#[0-9a-fA-F]{6}$"
+     },
+     "category_match": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "maxLength": 120
+     },
+     "linked_task_match": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "maxLength": 120
+     }
+    },
+    "required": [
+     "title",
+     "weekday",
+     "start_time",
+     "end_time"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "query_schedule_blocks",
+   "description": "List planner/calendar blocks by title and/or weekday with times and recurrence.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_contains": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "weekday": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 6
+     }
+    },
+    "required": [],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "update_schedule_block",
+   "description": "Edit one planner block. match_weekday optionally disambiguates the existing block; weekday changes its day. Null clears links.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "match_weekday": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 6
+     },
+     "new_title": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "weekday": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 6
+     },
+     "start_time": {
+      "type": "string",
+      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+     },
+     "end_time": {
+      "type": "string",
+      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+     },
+     "recurrence": {
+      "type": "string",
+      "enum": [
+       "weekly",
+       "even_weeks",
+       "odd_weeks",
+       "daily"
+      ]
+     },
+     "color": {
+      "type": "string",
+      "pattern": "^#[0-9a-fA-F]{6}$"
+     },
+     "category_match": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "maxLength": 120
+     },
+     "linked_task_match": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "maxLength": 120
+     }
+    },
+    "required": [
+     "title_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "delete_schedule_block",
+   "description": "Delete one planner block explicitly; optional match_weekday disambiguates titles.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "match_weekday": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 6
+     }
+    },
+    "required": [
+     "title_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "snooze_reminder",
+   "description": "Snooze one unfinished standalone reminder from now, in minutes (1..10080).",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "minutes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10080
+     }
+    },
+    "required": [
+     "title_match",
+     "minutes"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "complete_reminder",
+   "description": "Complete this reminder occurrence. Recurring reminders advance to the next future date; update_reminder(done=true) ends the entire reminder only when explicitly requested.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [
+     "title_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "set_task_relationships",
+   "description": "Assign or clear a task’s project, goal or category. Resolve names uniquely before any change; null unlinks. No tag replacement.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "project_match": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "maxLength": 120
+     },
+     "goal_match": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "maxLength": 120
+     },
+     "category_match": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "maxLength": 120
+     }
+    },
+    "required": [
+     "title_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "set_task_tag",
+   "description": "Attach or detach one existing tag to/from one task, idempotently. Does not replace other tags.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "tag_match": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "attached": {
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "title_match",
+     "tag_match",
+     "attached"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "query_task_relationships",
+   "description": "Read a task’s project, goal, category and tag names without exposing IDs.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     }
+    },
+    "required": [
+     "title_match"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "navigate",
+   "description": "Open an app page; can also open a Tasks view (today/tomorrow/upcoming/inbox/overdue/completed/all/routines/reminders) or a Library tab.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "page": {
+      "type": "string",
+      "enum": [
+       "home",
+       "today",
+       "tasks",
+       "calendar",
+       "productivity",
+       "projects",
+       "goals",
+       "library",
+       "notes",
+       "ideas",
+       "remember",
+       "reminders",
+       "stats",
+       "focus",
+       "review",
+       "search",
+       "settings"
+      ]
+     },
+     "tab": {
+      "type": "string",
+      "enum": [
+       "notes",
+       "ideas",
+       "remember"
+      ]
+     },
+     "view": {
+      "type": "string",
+      "enum": [
+       "today",
+       "tomorrow",
+       "upcoming",
+       "inbox",
+       "overdue",
+       "completed",
+       "all",
+       "routines",
+       "reminders"
+      ]
+     }
+    },
+    "required": [
+     "page"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "open_capture",
+   "description": "Open the idea-capture flow: live camera photo and/or a pausable voice note.",
+   "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "open_app",
+   "description": "Focus LifeOS if already open; cannot control other apps.",
+   "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "summarize_day",
+   "description": "Read today’s outstanding tasks and reminders.",
+   "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "reschedule_task",
+   "description": "Move one overdue or open task to today, tomorrow, next week or a specific date (without changing anything else).",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title_match": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "when": {
+      "type": "string",
+      "enum": [
+       "today",
+       "tomorrow",
+       "next_week",
+       "specific"
+      ]
+     },
+     "due_date": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "format": "date"
+     }
+    },
+    "required": [
+     "title_match",
+     "when"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "query_stats",
+   "description": "Read progress numbers: completed today/this week/this month, completion rate, overdue and inbox counts, routine (Productivity) performance, and focus-timer minutes today/this week.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "scope": {
+      "type": "string",
+      "enum": [
+       "day",
+       "week",
+       "month",
+       "overview"
+      ]
+     }
+    },
+    "required": [],
+    "additionalProperties": false
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "capabilities",
+   "description": "Explain supported and unsupported assistant controls.",
+   "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+   }
+  }
+ }
+]

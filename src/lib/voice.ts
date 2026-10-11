@@ -210,10 +210,16 @@ export function voicePerfMark(stage: VoiceStage): void {
 }
 export function getVoicePerf(): { stage: VoiceStage; ms: number | null; ago: number }[] { return perf.map(p => ({ stage: p.stage, ms: p.ms, ago: Date.now()-p.t })); }
 
-/** No private document bodies, IDs, media, categories or browsing history. */
+/** No private document bodies, IDs, media or browsing history — only the short
+ *  titles/names the model needs to target existing records exactly. */
 export function buildAppContext(page: string, _pageParams: Record<string, string>): AppContext {
   const now = new Date();
-  return { page, pageParams: {}, today: todayStr(), weekday: now.toLocaleDateString('en', { weekday: 'long' }), time: `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`, timezoneOffsetMinutes: now.getTimezoneOffset(), projects: [], categories: [], recentTaskTitles: [], todayTaskCount: dbState().tasks.filter(t => !t.deleted && !t.archived && t.due_date === todayStr() && t.status !== 'completed').length, routines: [] };
+  const s = dbState();
+  const recentTaskTitles = s.tasks.filter(t => !t.deleted && !t.archived && t.status !== 'completed').sort((a, b) => (b.updated_at ?? '').localeCompare(a.updated_at ?? '')).slice(0, 12).map(t => t.title);
+  const routines = s.routine_tasks.filter(t => !t.archived).slice(0, 12).map(t => t.title);
+  const projects = s.projects.filter(p => !p.archived).slice(0, 10).map(p => p.name);
+  const categories = s.categories.slice(0, 10).map(c => c.name);
+  return { page, pageParams: {}, today: todayStr(), weekday: now.toLocaleDateString('en', { weekday: 'long' }), time: `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`, timezoneOffsetMinutes: now.getTimezoneOffset(), projects, categories, recentTaskTitles, todayTaskCount: s.tasks.filter(t => !t.deleted && !t.archived && t.due_date === todayStr() && t.status !== 'completed').length, routines };
 }
 export interface CommandResult extends PlanResult { errorCode?: AssistantErrorCode }
 export async function executeCommand(spoken: string, ctx: { page: string; pageParams: Record<string, string>; navigate: (p: any, params?: Record<string, string>) => void }, history: { role: 'user' | 'assistant'; content: string }[] = [], signal?: AbortSignal): Promise<CommandResult> {
@@ -254,6 +260,7 @@ export async function executeCommand(spoken: string, ctx: { page: string; pagePa
     case 'add_note': call = { name: 'add_note', args: { title: intent.title, content: intent.content } }; break;
     case 'navigate': call = { name: 'navigate', args: { page: intent.page } }; break;
     case 'summarize_day': call = { name: 'summarize_day', args: {} }; break;
+    case 'summarize_stats': call = { name: 'query_stats', args: { scope: 'overview' } }; break;
     default: return { ok: false, message: offlineReason.message, errorCode: offlineReason.code, results: [] };
   }
   return executePlan([call], c => runAssistantTool(c, ctx), signal);
