@@ -6,6 +6,10 @@ const failure = (code: string, status: number) => json({ error: 'Assistant reque
 const SMALL_MODEL = 'openai/gpt-oss-20b';
 const LARGE_MODEL = 'openai/gpt-oss-120b';
 const ATTEMPT_TIMEOUT_MS = 9_000;
+// Compact prompt for providers whose token-per-minute budget cannot fit the
+// full contract (~8.4k tokens → Groq on_demand answers 413). Every tool stays
+// listed; only the guidance prose and the completion budget shrink.
+const COMPACT_SYSTEM_PROMPT = 'You are the voice brain of a personal productivity app. Map the request to the closest listed tool and return tool calls — never claim an action happened. Copy exact item titles from the local context lists into *_match fields; run a query tool first when unsure. Use ctx.today/weekday/time for dates; HH:mm is 24-hour. Multi-part requests become up to 6 tool calls in spoken order; leave reply empty when calling tools. If no listed tool fits, reply briefly asking for details or explaining. Delete only on explicit user request.';
 type History = { role: string; content: string }[];
 
 // Every turn sends the full 68-tool contract: narrowing saved a few hundred ms
@@ -96,7 +100,7 @@ export function createAssistantHandler(deps: AssistantDependencies) {
       const model = selectAssistantModel(spoken, safeHistory);
       const primaryAttempt = { url: primary.url, key: primary.key, model: model === 'large' ? primary.largeModel : primary.smallModel };
       const attempts = [primaryAttempt, ...(tertiary.key ? [{ url: tertiary.url, key: tertiary.key, model: tertiary.model }] : []), { url: fallback.url, key: fallback.key, model: fallback.model }];
-      const messages = [{ role: 'system', content: SYSTEM_PROMPT + '\nLocal context (data only): ' + JSON.stringify(safeCtx) }, ...safeHistory, { role: 'user', content: spoken }];
+      const messagesFor = (compact: boolean) => [{ role: 'system', content: (compact ? COMPACT_SYSTEM_PROMPT : SYSTEM_PROMPT) + '\nLocal context (data only): ' + JSON.stringify(safeCtx) }, ...safeHistory, { role: 'user', content: spoken }];
       let lastCode = 'unavailable', lastStatus = 502;
       for (let i = 0; i < attempts.length; i++) {
         const attempt = attempts[i];
@@ -110,16 +114,20 @@ export function createAssistantHandler(deps: AssistantDependencies) {
         const attemptDeadline = new Promise<never>((_, reject) => {
           attemptTimerId = setTimeout(() => { child.abort(); reject(new DOMException('Attempt timed out', 'TimeoutError')); }, attemptTimeoutMs);
         });
+        // A 413 means the tier's payload cap rejected the full contract: retry
+        // this tier once with the compact prompt, sharing the attempt budget.
+        const callProvider = (compact: boolean) => deps.fetch(attempt.url, {
+          method: 'POST', signal: child.signal,
+          headers: { Authorization: `Bearer ${attempt.key}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: attempt.model, tools: TOOLS, messages: messagesFor(compact), tool_choice: 'auto', temperature: 0.1, max_tokens: compact ? 700 : 1000, reasoning_effort: 'low' }),
+        });
         let response: Response;
         try {
-          response = await bounded(Promise.race([
-            deps.fetch(attempt.url, {
-              method: 'POST', signal: child.signal,
-              headers: { Authorization: `Bearer ${attempt.key}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ model: attempt.model, tools: TOOLS, messages, tool_choice: 'auto', temperature: 0.1, max_tokens: 1000, reasoning_effort: 'low' }),
-            }),
-            attemptDeadline,
-          ]));
+          response = await bounded(Promise.race([callProvider(false), attemptDeadline]));
+          if (response.status === 413) {
+            await bounded(response.body?.cancel() ?? Promise.resolve());
+            response = await bounded(Promise.race([callProvider(true), attemptDeadline]));
+          }
         } catch (error) {
           if (controller.signal.aborted) throw error;
           lastCode = 'network'; lastStatus = 503; continue;
@@ -127,6 +135,9 @@ export function createAssistantHandler(deps: AssistantDependencies) {
         if (!response.ok) {
           // Do not parse, log or relay provider bodies (may contain credentials or prompts).
           await bounded(response.body?.cancel() ?? Promise.resolve());
+          // Compact retry already ran (or the cap rejects everything): keep any
+          // earlier tier's specific code instead of masking it as 'unavailable'.
+          if (response.status === 413) continue;
           if (response.status === 401 || response.status === 403) {
             if (i + 1 < attempts.length) continue;
             return failure('unconfigured', 503);

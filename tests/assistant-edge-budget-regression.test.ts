@@ -49,6 +49,31 @@ test('429 with retry-after 0 pauses briefly then moves to the next provider', as
   assert.doesNotMatch(JSON.stringify(sent), /PRIVATE/);
 });
 
+test('413 payload caps retry the same tier with a compact prompt; tools stay complete', async () => {
+  const sent: any[] = [];
+  const handler = fixture(async (_url, init) => {
+    sent.push(JSON.parse(init.body as string));
+    return sent.length === 1 ? new Response('SECRET provider body', { status: 413 }) : success();
+  });
+  const response = await handler(request());
+  assert.equal(response.status, 200); assert.equal((await response.json()).calls[0].name, 'add_task');
+  assert.equal(sent.length, 2);
+  assert.equal(sent[0].max_tokens, 1000); assert.equal(sent[1].max_tokens, 700);
+  assert.equal(sent[1].tools.length, 75);
+  assert.ok(sent[1].messages[0].content.length < sent[0].messages[0].content.length);
+  assert.match(sent[1].messages[0].content, /Local context/);
+  assert.doesNotMatch(JSON.stringify(sent), /PRIVATE/);
+});
+
+test('a payload-too-large fallback keeps the earlier tier error code', async () => {
+  let count = 0;
+  const handler = fixture(async () => { count++; return count === 1 ? new Response('SECRET', { status: 429 }) : new Response('SECRET', { status: 413 }); });
+  const response = await handler(request());
+  assert.equal(count, 3); // primary 429 → fallback full 413 → fallback compact 413
+  assert.equal(response.status, 429);
+  assert.deepEqual(await response.json(), { error: 'Assistant request failed', code: 'rate_limit' });
+});
+
 test('all-provider rate limits remain typed 429; auth/config/provider errors never leak bodies', async () => {
   let count = 0;
   let handler = fixture(async () => { count++; return new Response('SECRET provider key and prompt', { status: 429 }); });
