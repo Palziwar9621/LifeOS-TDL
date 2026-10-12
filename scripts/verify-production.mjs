@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 const base = 'https://life-os-tdl.vercel.app';
 const downloads = {
-  'LifeOS.apk': '9f4945e166b4bb3336ca66b6f739caa3c171170a80a2da752ca53561fa673044',
+  'LifeOS.apk': 'bbcbd14db1e417106993d63a0dbe970e225f8cdd27e6ebf281c933b2c66423a4',
   'LifeOS-Setup.exe': '77946cb62f6ab6b88d450cbdcf1926dc3687175b196f1f2a86c05e968528ae3a',
   'LifeOS-Portable.exe': '4ccad4b6fd9593ccf0a38c598062ddeb17b07fe5e1844136d53ec0f87a6d6bfa',
 };
