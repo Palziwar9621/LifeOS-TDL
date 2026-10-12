@@ -84,4 +84,19 @@ public class AlarmBridge {
     public void notify(String key, String title, String body) {
         NotifHelper.show(ctx, key, title, body);
     }
+
+    /** The web side turned off / snoozed / dismissed this alarm (overlay
+     * button or swiped-away notification): stop the looping native sound
+     * service and remove its notification, or the alarm keeps ringing with
+     * no visible way to silence it. Marks the occurrence dismissed so the
+     * next web sync does not re-arm it. */
+    @JavascriptInterface
+    public void stopAlarm(String key) {
+        if (key == null || key.isEmpty()) return;
+        AlarmSoundService.stop(ctx);
+        android.app.NotificationManager nm =
+                (android.app.NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm != null) nm.cancel(key.hashCode());
+        AlarmScheduler.markDismissed(ctx, key);
+    }
 }

@@ -15,6 +15,7 @@
 //   'off'    — nothing
 
 import { getSettings, updateSettings } from './db';
+import { dismissAlarm } from './alarm';
 
 export type AlertMode = 'notify' | 'alarm' | 'off';
 
@@ -64,6 +65,12 @@ export async function requestAlertPermission(): Promise<NotificationPermission |
 /**
  * Deliver the notification for a due alert. `ring` is the callback that
  * starts the in-app alarm — called only when the mode is 'alarm'.
+ *
+ * Removal rule (user request): when the notification is swiped away or
+ * removed WITHOUT pressing Snooze/Turn off, the alarm stops too. Web
+ * Notifications expose no "swiped" event except `onclose`, so any close
+ * that the app itself didn't trigger counts as "user removed it" → the
+ * alarm for this occurrence is dismissed (turn-off, not snooze).
  */
 export function deliverAlert(
   key: string,
@@ -76,16 +83,26 @@ export function deliverAlert(
   if (mode === 'alarm' && ring) ring();
 
   // Android shell → native system notification (WebView has no Notification API).
+  // In 'alarm' mode the native AlarmReceiver already posts its own full-screen
+  // alarm notification (with Snooze / Turn off actions). Posting the silent
+  // one here used to REPLACE it — both used key.hashCode() as the id — leaving
+  // a buttonless, swipeable notification on top of a ringing service. Skip it.
   const native = (window as any).LifeOSNative;
   if (native?.notify) {
-    try { native.notify(key, title, body); } catch { /* never crash */ }
+    if (mode !== 'alarm') {
+      try { native.notify(key, title, body); } catch { /* never crash */ }
+    }
     return;
   }
   // Browser / Electron → web Notification.
   if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
     try {
+      let closedByApp = false;
       const n = new Notification(title, { body, tag: `lifeos-alert-${key}`, icon: '/icons/icon-192.png' });
-      n.onclick = () => { try { window.focus(); } catch { /* ignore */ } n.close(); };
+      n.onclick = () => { closedByApp = true; try { window.focus(); } catch { /* ignore */ } n.close(); };
+      // Swiped away / auto-cleared by the OS without the app closing it:
+      // turn the alarm off for this occurrence.
+      n.onclose = () => { if (!closedByApp) try { dismissAlarm(key); } catch { /* ignore */ } };
     } catch { /* ignore */ }
   }
 }

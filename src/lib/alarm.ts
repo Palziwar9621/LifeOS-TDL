@@ -48,6 +48,27 @@ function audio(): AudioContext | null {
   } catch { return null; }
 }
 
+/**
+ * Create + resume the AudioContext on the first real user gesture.
+ *
+ * Mobile browsers (iOS Safari, Android Chrome) start every AudioContext
+ * suspended and only allow resume() during a user gesture. An alarm firing
+ * before ANY tap since page load used to resume() a no-op and ring
+ * SILENTLY (vibration only) — the "sometimes the alarm has no sound" bug.
+ * Warming the context once at first touch makes every later fire audible.
+ */
+export function unlockAlarmAudio(): void {
+  const c = audio();
+  if (c && c.state === 'suspended') void c.resume().catch(() => { /* retried at fire time */ });
+}
+// One-time global gesture listener — cheap, and guarantees a runnable
+// AudioContext for every alarm after the user's first interaction.
+if (typeof window !== 'undefined') {
+  for (const evt of ['pointerdown', 'touchstart', 'keydown'] as const) {
+    window.addEventListener(evt, unlockAlarmAudio, { once: true, passive: true });
+  }
+}
+
 function tone(c: AudioContext, freq: number, t0: number, dur: number, gain = 0.18, type: OscillatorType = 'sine') {
   const o = c.createOscillator();
   const g = c.createGain();
@@ -177,7 +198,19 @@ export function startAlarm(key: string, sound?: AlarmSoundId, meta?: { title?: s
   };
 }
 
+/**
+ * In the Android shell the native AlarmSoundService loops independently of
+ * this WebView — silencing only the WebAudio loop left it ringing with the
+ * notification possibly already replaced/removed ("no way to turn it off").
+ * Every web-side stop therefore also stops the native side for that key.
+ */
+function stopNativeAlarm(key?: string): void {
+  if (!key) return;
+  try { (window as any).LifeOSNative?.stopAlarm?.(key); } catch { /* not in the shell */ }
+}
+
 export function stopAlarm() {
+  stopNativeAlarm(current?.key);
   activeStop?.();
 }
 
@@ -192,7 +225,9 @@ export function turnOffAlarm() {
   }
 }
 
-/** Stop ringing now, then ring the same alarm again after `minutes`. */
+/** Stop ringing now, then ring the same alarm again after `minutes`.
+ * The native sound loop is stopped too (it can't be re-armed remotely —
+ * the re-ring happens in-app on this device's timer). */
 export function snoozeAlarm(minutes = 10) {
   const meta = current ? { ...current } : null;
   stopAlarm();
@@ -210,7 +245,8 @@ export function snoozeAlarm(minutes = 10) {
 export function dismissAlarm(key: string) {
   dismissed.add(key);
   dismissKey(key); // persist cross-device (fire-and-forget)
-  stopAlarm();
+  stopNativeAlarm(key);
+  if (current?.key === key) stopAlarm();
 }
 /** Pull the shared dismissal record into the local set (cross-device silencing). */
 export async function loadSharedDismissals() {

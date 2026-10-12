@@ -102,7 +102,14 @@ public class AlarmReceiver extends BroadcastReceiver {
                 .addAction(new Notification.Action.Builder(null, "Snooze 10m", pSnooze).build())
                 .addAction(new Notification.Action.Builder(null, "Turn off", pDismiss).build());
 
-        if (android.os.Build.VERSION.SDK_INT < 34 || nm.canUseFullScreenIntent()) b.setFullScreenIntent(pOpen, true);
+        // Auto-open consistency: the full-screen intent fires ONLY when the
+        // system grants it (Android 14+ lets users revoke "Alarms & reminders";
+        // some OEM skins block it by default). When it can't fire we do NOT set
+        // it at all — behavior is then deterministic per device: always
+        // auto-open (permission granted) or never (tap the notification to
+        // open) — instead of silently working only some of the time.
+        if (android.os.Build.VERSION.SDK_INT < 34) b.setFullScreenIntent(pOpen, true);
+        else if (nm.canUseFullScreenIntent()) b.setFullScreenIntent(pOpen, true);
         Notification notification = b.build();
         nm.notify(notifId, notification);
 

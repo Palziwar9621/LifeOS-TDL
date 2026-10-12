@@ -34,7 +34,13 @@ public final class NotifHelper {
             nm.createNotificationChannel(ch);
         }
 
-        int notifId = key.hashCode();
+        // Distinct id space from AlarmReceiver's full-alarm notification
+        // (key.hashCode()): with the same id this silent notification used to
+        // REPLACE the ringing alarm's notification — removing its Snooze and
+        // Turn off buttons and letting the user swipe the alarm away with the
+        // sound service still looping.
+        int notifId = key.hashCode() + 700_000_000; // stays within int range (hashCode ∈ [-2^31, 2^31))
+        if (notifId == key.hashCode()) notifId = key.hashCode() - 700_000_000;
         Intent open = ctx.getPackageManager().getLaunchIntentForPackage(ctx.getPackageName());
         if (open == null) open = new Intent(ctx, MainActivity.class);
         PendingIntent pOpen = PendingIntent.getActivity(ctx, notifId, open,
