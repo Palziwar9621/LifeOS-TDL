@@ -7,8 +7,8 @@ param(
 # a password as an argument, write it to a file, or start a transcript here.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$inputApk = Join-Path $root 'release\LifeOS-1.3.2-aligned-unsigned.apk'
-$outputApk = Join-Path $root 'release\LifeOS-1.3.2.apk'
+$inputApk = Join-Path $root 'release\LifeOS-1.3.3-aligned-unsigned.apk'
+$outputApk = Join-Path $root 'release\LifeOS-1.3.3.apk'
 $key = Join-Path $root 'android.keystore'
 $signer = Join-Path $BuildTools 'apksigner.bat'
 $aligner = Join-Path $BuildTools 'zipalign.exe'
@@ -22,7 +22,7 @@ try {
     $env:JAVA_HOME = $JavaHome
     & $aligner -c -P 16 4 $inputApk
     if ($LASTEXITCODE -ne 0) { throw 'APK alignment verification failed.' }
-    Write-Host 'Sign LifeOS Android 1.3.2 using the existing release key.'
+    Write-Host 'Sign LifeOS Android 1.3.3 using the existing release key.'
     Write-Host 'Enter the password only at the apksigner prompt below. Input is not recorded.'
     & $signer sign --ks $key --ks-key-alias lifeos --out $outputApk $inputApk
     if ($LASTEXITCODE -ne 0) { throw 'Signing failed. No APK will be published.' }
