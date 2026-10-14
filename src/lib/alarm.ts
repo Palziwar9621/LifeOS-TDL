@@ -97,7 +97,7 @@ function stopVibration() {
 }
 
 /** One ~0.8s pattern of the given sound, layered for loudness. */
-function playPattern(id: AlarmSoundId) {
+function playPattern(id: AlarmSoundId): (() => void) | undefined {
   const c = audio();
   if (!c) return;
   const t = c.currentTime + 0.02;
@@ -147,6 +147,7 @@ function playPattern(id: AlarmSoundId) {
     default:
       break;
   }
+  return () => { master.disconnect(); };
 }
 
 export function isAlarmActive(): boolean { return activeStop !== null; }
@@ -163,6 +164,7 @@ export function subscribeAlarm(fn: () => void): () => void {
 }
 
 let snoozeTimer: ReturnType<typeof setTimeout> | null = null;
+let snoozedKey: string | null = null;
 
 /**
  * Start an alarm loop for `key`. Rings continuously (sound + vibration)
@@ -172,14 +174,19 @@ let snoozeTimer: ReturnType<typeof setTimeout> | null = null;
 export function startAlarm(key: string, sound?: AlarmSoundId, meta?: { title?: string; body?: string }) {
   const id = sound ?? currentSound;
   if (id === 'none') return;
-  stopAlarm();
   if (dismissed.has(key) || isKeyDismissed(key)) return;
+  stopAlarm();
   let stopped = false;
+  let stopPattern: (() => void) | undefined;
 
   current = { key, title: meta?.title ?? '⏰ Alarm', body: meta?.body ?? '', sound: id };
   const run = () => {
     if (stopped) return;
-    playPattern(id);
+    // Native catch-up and cross-device sync populate the shared record even
+    // if their live dismissal event was missed while the WebView was paused.
+    if (isKeyDismissed(key)) { activeStop?.(); return; }
+    stopPattern?.();
+    stopPattern = playPattern(id);
     loopTimer = setTimeout(run, 1200);
   };
   run();
@@ -190,6 +197,7 @@ export function startAlarm(key: string, sound?: AlarmSoundId, meta?: { title?: s
   // notification), or a NEW alarm replaces it.
   activeStop = () => {
     stopped = true;
+    stopPattern?.();
     if (loopTimer) { clearTimeout(loopTimer); loopTimer = null; }
     stopVibration();
     activeStop = null;
@@ -230,11 +238,16 @@ export function turnOffAlarm() {
  * the re-ring happens in-app on this device's timer). */
 export function snoozeAlarm(minutes = 10) {
   const meta = current ? { ...current } : null;
-  stopAlarm();
+  if (meta) {
+    try { (window as any).LifeOSNative?.pauseAlarm?.(meta.key); } catch { /* not in the shell */ }
+  }
+  activeStop?.();
   if (snoozeTimer) { clearTimeout(snoozeTimer); snoozeTimer = null; }
+  snoozedKey = meta?.key ?? null;
   if (meta) {
     snoozeTimer = setTimeout(() => {
       snoozeTimer = null;
+      snoozedKey = null;
       startAlarm(meta.key, meta.sound, { title: meta.title, body: meta.body });
     }, minutes * 60_000);
   }
@@ -243,11 +256,34 @@ export function snoozeAlarm(minutes = 10) {
 /** Permanently dismiss this alarm key — locally AND on the shared record,
  * so it never rings again on any device until its next occurrence. */
 export function dismissAlarm(key: string) {
+  if (!key) return;
+  if (key === snoozedKey && snoozeTimer) {
+    clearTimeout(snoozeTimer);
+    snoozeTimer = null;
+    snoozedKey = null;
+  }
   dismissed.add(key);
   dismissKey(key); // persist cross-device (fire-and-forget)
   stopNativeAlarm(key);
-  if (current?.key === key) stopAlarm();
+  if (current?.key === key) activeStop?.();
 }
+
+// Android's notification delete intent reaches the visible WebView through
+// MainActivity. Handle the exact key so swiping an old notification cannot
+// stop a newer WebAudio alarm that has replaced it.
+if (typeof window !== 'undefined') {
+  window.addEventListener('lifeos-native-alarm-dismiss', (event: Event) => {
+    const key = (event as CustomEvent<{ key?: string }>).detail?.key;
+    if (key) dismissAlarm(key);
+  });
+  window.addEventListener('lifeos-native-alarm-snooze', (event: Event) => {
+    const key = (event as CustomEvent<{ key?: string }>).detail?.key;
+    // Android already scheduled the retry. Do not call stopAlarm(): its
+    // native bridge marks the key dismissed and would cancel that snooze.
+    if (key && current?.key === key) activeStop?.();
+  });
+}
+
 /** Pull the shared dismissal record into the local set (cross-device silencing). */
 export async function loadSharedDismissals() {
   await syncDismissals();

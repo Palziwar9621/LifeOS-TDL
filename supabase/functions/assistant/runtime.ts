@@ -6,19 +6,66 @@ const failure = (code: string, status: number) => json({ error: 'Assistant reque
 const SMALL_MODEL = 'openai/gpt-oss-20b';
 const LARGE_MODEL = 'openai/gpt-oss-120b';
 const ATTEMPT_TIMEOUT_MS = 9_000;
+const TURN_TIMEOUT_MS = 20_000;
 // Compact prompt for providers whose token-per-minute budget cannot fit the
 // full contract (~8.4k tokens → Groq on_demand answers 413). Every tool stays
 // listed; only the guidance prose and the completion budget shrink.
 const COMPACT_SYSTEM_PROMPT = 'You are the voice brain of a personal productivity app. Map the request to the closest listed tool and return tool calls — never claim an action happened. Copy exact item titles from the local context lists into *_match fields; run a query tool first when unsure. Use ctx.today/weekday/time for dates; HH:mm is 24-hour. Multi-part requests become up to 6 tool calls in spoken order; leave reply empty when calling tools. If no listed tool fits, reply briefly asking for details or explaining. Delete only on explicit user request.';
 type History = { role: string; content: string }[];
 
-// Every turn sends the full 68-tool contract: narrowing saved a few hundred ms
+type ProviderCooldown = { until: number; code: 'rate_limit' | 'rate_limit_daily' };
+
+// A short request can still need the stronger model when it refers back to a
+// previous target ("move it") or repairs a prior instruction ("actually...").
+// These signals are deliberately narrow: ordinary small talk and one-step
+// commands should keep the faster model.
+const ACTION_WORDS = /\b(?:add|archive|complete|copy|create|delete|duplicate|edit|finish|label|mark|move|open|query|remove|rename|reopen|reschedule|restore|schedule|search|set|show|snooze|tag|tick|untick|update)\b/g;
+const REFERENTIAL_WORDS = /\b(?:it|that|this|these|those|one|ones|them|same|another)\b/;
+const CORRECTION_WORDS = /\b(?:actually|correction|instead|rather|wait|i meant|make that|change that|no[, ]+not|undo)\b/;
+const MULTI_STEP_WORDS = /\b(?:and then|then also|after that|also|as well as|plus)\b|;/;
+
+function actionCount(spoken: string): number {
+  ACTION_WORDS.lastIndex = 0;
+  const count = [...spoken.toLowerCase().matchAll(ACTION_WORDS)].length;
+  ACTION_WORDS.lastIndex = 0;
+  return count;
+}
+
+function needsContextModel(spoken: string, history: History): boolean {
+  const normalized = spoken.trim().toLowerCase();
+  const refersBack = REFERENTIAL_WORDS.test(normalized) && (history.length > 0 || ACTION_WORDS.test(normalized));
+  ACTION_WORDS.lastIndex = 0;
+  return refersBack || CORRECTION_WORDS.test(normalized) || MULTI_STEP_WORDS.test(normalized) || actionCount(normalized) > 1;
+}
+
+// Used only to decide whether a tool-less answer warrants another provider.
+// A greeting or a normal question should be returned as-is; explicit app
+// requests still get a chance on the next tier if the first model missed a
+// tool call.
+function isLikelyActionRequest(spoken: string): boolean {
+  const normalized = spoken.toLowerCase();
+  ACTION_WORDS.lastIndex = 0;
+  const action = ACTION_WORDS.test(normalized);
+  ACTION_WORDS.lastIndex = 0;
+  return action || /\b(?:what(?:'s| is)\s+(?:on|left|due|scheduled)|where is|how am i doing|summarize|review my|tell me what)\b/.test(normalized);
+}
+
+function retryAfterMs(value: string | null, now: number): number {
+  if (!value) return 0;
+  const seconds = Number(value.trim());
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+  const date = Date.parse(value);
+  return Number.isFinite(date) ? Math.max(0, date - now) : 0;
+}
+
+// Every turn sends the full tool contract: narrowing saved a few hundred ms
 // but made the model blind to most capabilities, causing missed actions. The
-// fast small model handles ordinary commands; only long, multi-part or
-// history-heavy turns escalate to the stronger large model.
+// fast small model handles ordinary commands; context-dependent, long,
+// multi-part or history-heavy turns escalate to the stronger large model.
 export function selectAssistantModel(spoken: string, history: History = []): 'small' | 'large' {
   if (spoken.length > 120) return 'large';
   if (history.length >= 4 || history.some(h => h.content.length > 150)) return 'large';
+  if (needsContextModel(spoken, history)) return 'large';
   return 'small';
 }
 
@@ -29,6 +76,12 @@ export interface AssistantDependencies {
 }
 
 export function createAssistantHandler(deps: AssistantDependencies) {
+  // Cooldowns live for the lifetime of this handler, so a repeated request in
+  // the same edge worker does not immediately hit a tier that asked us to
+  // wait. The model is part of the key: a provider's small model can be
+  // capped while its configured fallback model remains usable.
+  const cooldowns = new Map<string, ProviderCooldown>();
+
   return async (req: Request): Promise<Response> => {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
     if (req.method !== 'POST') return failure('invalid_contract', 405);
@@ -36,7 +89,7 @@ export function createAssistantHandler(deps: AssistantDependencies) {
     const abort = () => controller.abort();
     req.signal.addEventListener('abort', abort, { once: true });
     if (req.signal.aborted) abort();
-    const timeout = setTimeout(abort, 20_000);
+    const timeout = setTimeout(abort, TURN_TIMEOUT_MS);
     // The whole turn is bounded, including auth, body parsing and provider JSON.
     async function bounded<T>(promise: Promise<T>): Promise<T> {
       controller.signal.throwIfAborted();
@@ -102,8 +155,24 @@ export function createAssistantHandler(deps: AssistantDependencies) {
       const attempts = [primaryAttempt, ...(tertiary.key ? [{ url: tertiary.url, key: tertiary.key, model: tertiary.model }] : []), { url: fallback.url, key: fallback.key, model: fallback.model }];
       const messagesFor = (compact: boolean) => [{ role: 'system', content: (compact ? COMPACT_SYSTEM_PROMPT : SYSTEM_PROMPT) + '\nLocal context (data only): ' + JSON.stringify(safeCtx) }, ...safeHistory, { role: 'user', content: spoken }];
       let lastCode = 'unavailable', lastStatus = 502;
+      const attemptedCooldownKeys = new Set<string>();
       for (let i = 0; i < attempts.length; i++) {
         const attempt = attempts[i];
+        const cooldownKey = `${attempt.url}\u0000${attempt.model}`;
+        // A cooldown suppresses a tier on a later request. Duplicate entries
+        // in this same chain still get one try so a configured fallback can
+        // recover even when it shares the endpoint/model with the primary.
+        if (!attemptedCooldownKeys.has(cooldownKey)) {
+          attemptedCooldownKeys.add(cooldownKey);
+          const cooldown = cooldowns.get(cooldownKey);
+          if (cooldown) {
+            if (cooldown.until > Date.now()) {
+              lastCode = cooldown.code; lastStatus = 429;
+              continue;
+            }
+            cooldowns.delete(cooldownKey);
+          }
+        }
         controller.signal.throwIfAborted();
         // Per-attempt deadline with a child signal: aborts only this provider
         // call, leaving the rest of the turn budget intact for later tiers.
@@ -143,13 +212,15 @@ export function createAssistantHandler(deps: AssistantDependencies) {
             return failure('unconfigured', 503);
           }
           if (response.status === 429) {
-            // Daily caps report waits of minutes-to-hours: skip ahead without
-            // waiting. Short caps get one bounded pause (≤3s) before moving to
-            // the next provider, letting a draining window recover the fastest
-            // provider when it is worth it.
-            const retryAfter = Number(response.headers.get('retry-after') ?? '') || 0;
-            if (retryAfter <= 900) await bounded(new Promise(r => setTimeout(r, (Math.min(retryAfter || 1, 3) + 0.3) * 1000)));
-            lastCode = retryAfter > 900 ? 'rate_limit_daily' : 'rate_limit';
+            // Never sleep inside an edge turn for a provider-declared wait.
+            // Remember the deadline instead, so later requests skip this
+            // model while the provider's quota window is still closed.
+            const now = Date.now();
+            const waitMs = retryAfterMs(response.headers.get('retry-after'), now);
+            const retryAfterSeconds = waitMs / 1000;
+            const code = retryAfterSeconds > 900 ? 'rate_limit_daily' : 'rate_limit';
+            if (waitMs > 0) cooldowns.set(cooldownKey, { until: now + waitMs, code });
+            lastCode = code;
             lastStatus = 429;
             continue;
           }
@@ -171,7 +242,7 @@ export function createAssistantHandler(deps: AssistantDependencies) {
           // Prose instead of a plan gets one more provider try before being
           // accepted — a model that missed the toolset must not lose the
           // command when another provider can still read it.
-          if (!calls.length && i + 1 < attempts.length) continue;
+           if (!calls.length && i + 1 < attempts.length && isLikelyActionRequest(spoken)) continue;
           if (!calls.length && (typeof message.content !== 'string' || !message.content.trim())) throw new Error();
           return json({ reply: calls.length ? '' : message.content.slice(0, 1000), calls });
         } catch { return failure('invalid_contract', 502); }

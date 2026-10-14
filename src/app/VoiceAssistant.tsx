@@ -1,8 +1,10 @@
-// Only explicitly consented foreground wake mode resumes; conversations never do.
+// Only explicitly consented foreground wake mode resumes; bounded text memory
+// survives remounts without restarting a conversation or executing old commands.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from '../ui/components';
 import { useApp } from './store';
 import { createAssistantWakeLifecycle, foregroundWakeEnabled } from '../lib/assistantWake';
+import { appendAssistantMemory, assistantMemoryUserId, compactAssistantHistory, loadAssistantMemory, type AssistantMemoryEntry } from '../lib/assistantMemory';
 import {
   speechSupported, startListening, stopListening, getAssistantSettings,
   saveAssistantSettings, extractWakeCommand, executeCommand, stopIntent,
@@ -24,12 +26,21 @@ export function VoiceAssistant() {
   const genRef = useRef(0);
   const speechGen = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
-  const history = useRef<{ role: 'user' | 'assistant'; content: string }[]>([]);
+  const history = useRef<AssistantMemoryEntry[]>([]);
+  const memoryUser = useRef<string | null>(null);
   const mounted = useRef(true);
   const wakeLifecycle = useRef<ReturnType<typeof createAssistantWakeLifecycle> | null>(null);
   const toastRef = useRef(toast);
   toastRef.current = toast;
   const setSession = useCallback((next: typeof mode) => { modeRef.current = next; setMode(next); }, []);
+  const syncMemoryUser = useCallback(() => {
+    const nextUser = assistantMemoryUserId();
+    if (nextUser !== memoryUser.current) {
+      memoryUser.current = nextUser;
+      history.current = loadAssistantMemory(nextUser);
+    }
+    return nextUser;
+  }, []);
 
   const cutSpeech = useCallback(() => {
     speechGen.current++;
@@ -43,7 +54,7 @@ export function VoiceAssistant() {
     genRef.current++; busyRef.current = false; setBusy(false); cutSpeech();
   }, [cutSpeech]);
   const resetSession = useCallback(() => {
-    interrupt(); stopListening(); setMicState('stopped'); setSession('idle'); history.current = [];
+    interrupt(); stopListening(); setMicState('stopped'); setSession('idle');
   }, [interrupt, setSession]);
   const endSession = useCallback(() => wakeLifecycle.current?.stop(), []);
   const speak = useCallback((message: string) => {
@@ -79,10 +90,13 @@ export function VoiceAssistant() {
     const controller = new AbortController(); abortRef.current = controller;
     busyRef.current = true; setBusy(true);
     voicePerfMark('final_transcript');
-    const previous = history.current.slice(-8);
+    const user = syncMemoryUser();
+    // Read once per request, also picking up another tab's completed turn.
+    history.current = loadAssistantMemory(user);
+    const previous = compactAssistantHistory(history.current);
     try {
       const result = await executeCommand(text, { page, pageParams, navigate }, previous, controller.signal);
-      if (!mounted.current) return;
+      if (!mounted.current || user !== assistantMemoryUserId()) return;
       if (generation !== genRef.current || result.cancelled) {
         // A DB helper already entered may finish. Report its receipt, never say
         // that a committed action was cancelled or silently undo it.
@@ -90,8 +104,7 @@ export function VoiceAssistant() {
           const receipt = `Earlier request finished: ${result.results.join(' ')}`;
           toast(receipt, 'info');
           if (modeRef.current !== 'idle') {
-            history.current.push({ role: 'user', content: text }, { role: 'assistant', content: receipt });
-            history.current = history.current.slice(-12);
+            history.current = appendAssistantMemory([{ role: 'user', content: '[Earlier request interrupted; do not resume it]' }, { role: 'assistant', content: receipt }], user);
           }
         }
         return;
@@ -101,8 +114,7 @@ export function VoiceAssistant() {
       speak(result.message);
       // Pending/cancelled requests never enter conversation memory as if they
       // were still instructions to execute on the next turn.
-      history.current.push({ role: 'user', content: text }, { role: 'assistant', content: result.message });
-      history.current = history.current.slice(-12);
+      if (result.ok) history.current = appendAssistantMemory([{ role: 'user', content: text }, { role: 'assistant', content: result.message }], user);
     } catch {
       if (generation === genRef.current && !controller.signal.aborted) {
         const message = 'I couldn’t finish that request. Please check the app before trying again.';
@@ -111,7 +123,7 @@ export function VoiceAssistant() {
     } finally {
       if (generation === genRef.current) { busyRef.current = false; setBusy(false); abortRef.current = null; }
     }
-  }, [page, pageParams, navigate, speak, interrupt, endSession, toast]);
+  }, [page, pageParams, navigate, speak, interrupt, endSession, toast, syncMemoryUser]);
 
   const onTranscript = useCallback((text: string, final: boolean) => {
     if (modeRef.current === 'idle') return;
@@ -174,8 +186,9 @@ export function VoiceAssistant() {
     mounted.current = true;
     const lifecycle = wakeLifecycle.current!;
     const changed = () => {
-      const next = getAssistantSettings(); setSettings(next);
-      lifecycle.settingsChanged();
+       const next = getAssistantSettings(); setSettings(next);
+       if (assistantMemoryUserId() !== memoryUser.current) { interrupt(); syncMemoryUser(); }
+       lifecycle.settingsChanged();
     };
     window.addEventListener('lifeos-assistant-settings', changed);
     window.addEventListener('storage', changed);
@@ -190,7 +203,7 @@ export function VoiceAssistant() {
       window.removeEventListener('storage', changed);
       document.removeEventListener('visibilitychange', visibilityChanged);
     };
-  }, []);
+  }, [syncMemoryUser, interrupt]);
   useEffect(() => { setTtsUnavailableHandler(() => toast('Spoken audio is unavailable. Your result is shown in the app.', 'info')); return () => setTtsUnavailableHandler(null); }, [toast]);
 
   if (!speechSupported() || !settings.enabled) return null;

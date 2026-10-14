@@ -5,6 +5,11 @@
 // browser otherwise.
 const { contextBridge, ipcRenderer } = require('electron');
 
+ipcRenderer.on('lifeos:alarm-dismissed', (_event, key) => {
+  if (typeof key !== 'string' || !key) return;
+  window.dispatchEvent(new CustomEvent('lifeos-native-alarm-dismiss', { detail: { key } }));
+});
+
 window.addEventListener('DOMContentLoaded', () => {
   document.title = 'LifeOS';
 });

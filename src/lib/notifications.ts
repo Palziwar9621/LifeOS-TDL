@@ -1,7 +1,7 @@
 // LifeOS — web notifications + alarm scheduler
 import { dbState, snoozeReminder, updateReminder, completeTask, updateTask, getSettings } from './db';
 import { splitIso, todayStr, dateTimeFrom, parseDateStr } from './dates';
-import { startAlarm, wasDismissed, isKeyDismissed } from './alarm';
+import { dismissAlarm, startAlarm, wasDismissed, isKeyDismissed } from './alarm';
 import { syncDismissals } from './dismissals';
 import { deliverAlert } from './alerts';
 import type { Reminder, Task, RoutineTask } from './types';
@@ -43,11 +43,18 @@ function show(title: string, body: string, tag: string, onClick?: () => void): v
       tag: `lifeos-${tag}`,
       icon: '/icons/icon-192.png',
     });
+    let closedByApp = false;
     n.onclick = () => {
+      closedByApp = true;
       try { window.focus(); } catch { /* ignore */ }
       onClick?.();
       n.close();
     };
+    // Notification.close() has no callback, but a user swipe emits close in
+    // browsers that support the Notification API. Treat that as turning off
+    // this occurrence so an anniversary alarm cannot ring behind a dismissed
+    // notification either.
+    n.onclose = () => { if (!closedByApp) try { dismissAlarm(tag); } catch { /* ignore */ } };
   } catch {
     /* Notification constructor can throw in some contexts; never crash */
   }

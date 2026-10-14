@@ -17,6 +17,15 @@ import android.webkit.JavascriptInterface;
 public class AlarmBridge {
     private final Context ctx;
 
+    /** Live delivery; dismissedKeys() remains the durable catch-up path. */
+    static void notifyWeb(String key, boolean snoozed) {
+        MainActivity activity = MainActivity.get();
+        if (activity == null || key == null || key.isEmpty()) return;
+        String event = snoozed ? "lifeos-native-alarm-snooze" : "lifeos-native-alarm-dismiss";
+        activity.evaluateJs("window.dispatchEvent(new CustomEvent('" + event + "',{detail:{key:"
+                + org.json.JSONObject.quote(key) + "}}));");
+    }
+
     public AlarmBridge(Context ctx) { this.ctx = ctx.getApplicationContext(); }
 
     @JavascriptInterface
@@ -93,10 +102,20 @@ public class AlarmBridge {
     @JavascriptInterface
     public void stopAlarm(String key) {
         if (key == null || key.isEmpty()) return;
-        AlarmSoundService.stop(ctx);
+        AlarmSoundService.stop(ctx, key, key.hashCode() == 0 ? 1 : key.hashCode());
         android.app.NotificationManager nm =
                 (android.app.NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
-        if (nm != null) nm.cancel(key.hashCode());
+        if (nm != null) nm.cancel(key, key.hashCode() == 0 ? 1 : key.hashCode());
         AlarmScheduler.markDismissed(ctx, key);
+    }
+
+    /** Pause playback for web snooze without dismissing the occurrence. */
+    @JavascriptInterface
+    public void pauseAlarm(String key) {
+        if (key == null || key.isEmpty()) return;
+        AlarmSoundService.stop(ctx, key, key.hashCode() == 0 ? 1 : key.hashCode());
+        android.app.NotificationManager nm =
+                (android.app.NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm != null) nm.cancel(key, key.hashCode() == 0 ? 1 : key.hashCode());
     }
 }

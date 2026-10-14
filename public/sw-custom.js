@@ -78,7 +78,7 @@ self.addEventListener('notificationclick', (event) => {
       return self.clients.openWindow('/?lifeos-snooze=' + encodeURIComponent(data.key) + '&min=10');
     }
     if (action === 'dismiss') {
-      for (const c of cs) { c.postMessage({ type: 'lifeos-dismiss', key: data.key }); break; }
+      for (const c of cs) c.postMessage({ type: 'lifeos-dismiss', key: data.key });
       return;
     }
     // Plain tap → open/focus the app.
@@ -86,6 +86,17 @@ self.addEventListener('notificationclick', (event) => {
       if ('focus' in c) { await c.focus(); if (c.navigate && data.url) await c.navigate(target).catch(() => {}); return; }
     }
     return self.clients.openWindow(target);
+  })());
+});
+
+self.addEventListener('notificationclose', (event) => {
+  // This event represents user dismissal; Notification.close() does not fire
+  // notificationclose, so programmatic replacement and snooze stay distinct.
+  const key = event.notification?.data?.key;
+  if (!key) return;
+  event.waitUntil((async () => {
+    const cs = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const c of cs) c.postMessage({ type: 'lifeos-dismiss', key });
   })());
 });
 

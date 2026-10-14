@@ -2,6 +2,7 @@
 import { getClient } from './supabase';
 import { validateToolCall, type ToolCall } from '../../supabase/functions/assistant/contract';
 import { AssistantError, assistantError, assistantErrorCode } from './assistantError';
+import { compactAssistantHistory } from './assistantMemory';
 export { AssistantError } from './assistantError';
 export type { AssistantErrorCode } from './assistantError';
 export { TOOLS, SYSTEM_PROMPT, CAPABILITIES, UNSUPPORTED_CONTROLS } from '../../supabase/functions/assistant/contract';
@@ -61,7 +62,7 @@ export async function askBrain(spoken: string, ctx: AppContext, history: { role:
       controller.signal.throwIfAborted();
       const { data, error } = await bounded(sb.functions.invoke('assistant', {
         headers: { Authorization: `Bearer ${session!.access_token}` },
-        body: { spoken, ctx, history: history.slice(-8).map(h => ({ role: h.role, content: h.content.slice(0, 300) })) },
+        body: { spoken, ctx, history: compactAssistantHistory(history) },
         signal: controller.signal,
       }));
       controller.signal.throwIfAborted();

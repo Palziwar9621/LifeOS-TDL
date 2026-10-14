@@ -1,7 +1,7 @@
 // Voice runtime: explicit activation, bounded private context and cancellable plans.
 import { parseCommand } from './assistant';
 import { askBrain, type AppContext, type ToolCall } from './brain';
-import { dbState } from './db';
+import { currentUserId, dbState } from './db';
 import { todayStr } from './dates';
 import { parseQuickAdd } from './quickadd';
 import { executePlan, stopIntent, type PlanResult } from './assistantSafety';
@@ -222,11 +222,27 @@ export function buildAppContext(page: string, _pageParams: Record<string, string
   return { page, pageParams: {}, today: todayStr(), weekday: now.toLocaleDateString('en', { weekday: 'long' }), time: `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`, timezoneOffsetMinutes: now.getTimezoneOffset(), projects, categories, recentTaskTitles, todayTaskCount: s.tasks.filter(t => !t.deleted && !t.archived && t.due_date === todayStr() && t.status !== 'completed').length, routines };
 }
 export interface CommandResult extends PlanResult { errorCode?: AssistantErrorCode }
+const SAFE_REMOTE_FALLBACKS = new Set<AssistantErrorCode>(['rate_limit', 'rate_limit_daily', 'unavailable']);
+
+// Provider failures never authorize local writes, even when a prefix looks
+// like an add/complete command: the rest may contain qualifiers or negations.
+function safeLocalFallback(intent: ReturnType<typeof parseCommand>): boolean {
+  return ['navigate', 'summarize_day', 'summarize_stats', 'summarize_week', 'search_all'].includes(intent.kind);
+}
+
 export async function executeCommand(spoken: string, ctx: { page: string; pageParams: Record<string, string>; navigate: (p: any, params?: Record<string, string>) => void }, history: { role: 'user' | 'assistant'; content: string }[] = [], signal?: AbortSignal): Promise<CommandResult> {
+  const userId = currentUserId();
+  const run = (call: ToolCall) => {
+    if (userId !== currentUserId()) throw new AssistantError('cancelled');
+    return runAssistantTool(call, ctx);
+  };
   const cancelled = (): CommandResult => ({ ok: false, cancelled: true, message: '', results: [] });
   if (signal?.aborted || stopIntent(spoken)) return cancelled();
   if (!spoken.trim() || spoken.length > 500) return { ok: false, message: 'Please use a short, specific request.', results: [] };
-  if (/^(?:what can you do|help|capabilities)[?.!]*$/i.test(spoken.trim())) return executePlan([{ name: 'capabilities', args: {} }], c => runAssistantTool(c, ctx), signal);
+  if (/^(?:what can you do|help|capabilities)[?.!]*$/i.test(spoken.trim())) return executePlan([{ name: 'capabilities', args: {} }], run, signal);
+  const intent = parseCommand(spoken);
+  // Exact navigation needs no auth, DB context construction, or provider turn.
+  if (intent.kind === 'navigate') return executePlan([{ name: 'navigate', args: { page: intent.page, ...(intent.tab ? { tab: intent.tab } : {}) } }], run, signal);
   let offlineReason = new AssistantError('ai_disabled', true);
   if (getAssistantSettings().useAI) {
     let plan: { reply: string; calls: ToolCall[] } | undefined;
@@ -234,22 +250,26 @@ export async function executeCommand(spoken: string, ctx: { page: string; pagePa
     catch (error) {
       const failure = assistantError(error);
       if (signal?.aborted || failure.code === 'cancelled') return cancelled();
-      // Only a known preflight lack of AI can use the local parser. A remote
-      // failure/invalid plan must never become an unintended local write.
-      if (!failure.offlineAllowed) return { ok: false, message: failure.message, errorCode: failure.code, results: [] };
+      // Outages may fall back to reads; only preflight absence of AI permits
+      // the explicitly requested offline writes below.
+      if (!failure.offlineAllowed && !SAFE_REMOTE_FALLBACKS.has(failure.code)) return { ok: false, message: failure.message, errorCode: failure.code, results: [] };
       offlineReason = failure;
     }
-    if (signal?.aborted) return cancelled();
+    if (signal?.aborted || userId !== currentUserId()) return cancelled();
     if (plan) {
-      if (plan.calls.length) return executePlan(plan.calls, c => runAssistantTool(c, ctx), signal);
+      if (plan.calls.length) return executePlan(plan.calls, run, signal);
       return { ok: !!plan.reply, message: plan.reply || 'What would you like to do?', results: [] };
     }
   }
-  if (signal?.aborted) return cancelled();
-  const intent = parseCommand(spoken);
+  if (signal?.aborted || userId !== currentUserId()) return cancelled();
+  if (!offlineReason.offlineAllowed && !safeLocalFallback(intent)) {
+    return { ok: false, message: offlineReason.message, errorCode: offlineReason.code, results: [] };
+  }
   let call: ToolCall;
   switch (intent.kind) {
     case 'delete_task': case 'delete_reminder': case 'delete_note': call = { name: intent.kind, args: { title_match: intent.title_match } }; break;
+    case 'complete_task': call = { name: 'complete_task', args: { title_match: intent.title_match } }; break;
+    case 'reopen_task': call = { name: 'update_task', args: { title_match: intent.title_match, status: 'planned' } }; break;
     case 'add_task': {
       const p = parseQuickAdd(intent.text);
       call = { name: 'add_task', args: { title: p.title, due_date: intent.presetDate ?? p.due_date ?? todayStr(), due_time: (intent.presetTime ?? p.due_time)?.slice(0,5) ?? null, priority: intent.priority ?? p.priority ?? 'medium' } }; break;
@@ -258,12 +278,16 @@ export async function executeCommand(spoken: string, ctx: { page: string; pagePa
       if (!intent.due_at) return { ok: false, message: 'What date and time should I use for that reminder?', results: [] };
       call = { name: 'add_reminder', args: { title: intent.text, due_at: intent.due_at } }; break;
     case 'add_note': call = { name: 'add_note', args: { title: intent.title, content: intent.content } }; break;
-    case 'navigate': call = { name: 'navigate', args: { page: intent.page } }; break;
     case 'summarize_day': call = { name: 'summarize_day', args: {} }; break;
     case 'summarize_stats': call = { name: 'query_stats', args: { scope: 'overview' } }; break;
+    case 'summarize_week': call = { name: 'summarize_week', args: {} }; break;
+    case 'search_all': call = { name: 'search_all', args: { query: intent.query } }; break;
     default: return { ok: false, message: offlineReason.message, errorCode: offlineReason.code, results: [] };
   }
-  return executePlan([call], c => runAssistantTool(c, ctx), signal);
+  const result = await executePlan([call], run, signal);
+  return !offlineReason.offlineAllowed && !result.cancelled
+    ? { ...result, message: `Using your local data. ${result.message}` }
+    : result;
 }
 export function extractWakeCommand(text: string, settings: AssistantSettings): string | null {
   const t = text.trim(); const wake = settings.wakeWord.trim();

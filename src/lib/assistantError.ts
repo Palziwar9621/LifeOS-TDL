@@ -5,8 +5,11 @@ export const ASSISTANT_ERRORS = {
   auth_expired: 'Your sign-in has expired. Sign in again to use AI.',
   network: 'AI could not connect. Check your connection and try again.',
   unconfigured: 'AI is not configured. Check the app connection and assistant service setup.',
-  rate_limit: 'AI is busy or its request limit was reached. Please try again shortly.',
-  rate_limit_daily: 'The AI daily allowance is used up. It resets in a few hours; offline commands still work until then.',
+  // Keep provider/quota mechanics out of the user-facing voice reply. The
+  // command executor will still preserve this typed code for diagnostics and
+  // can safely fall back to local read-only actions.
+  rate_limit: 'I could not safely complete that request just now. Nothing was changed.',
+  rate_limit_daily: 'I could not complete that request right now. Nothing was changed; simple offline commands still work.',
   invalid_contract: 'AI returned an invalid action. Nothing was changed; please rephrase and try again.',
   unavailable: 'AI is temporarily unavailable. Please try again.',
   cancelled: 'Request stopped.',

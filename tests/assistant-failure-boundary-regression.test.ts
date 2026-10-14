@@ -4,6 +4,7 @@ import { getClient } from '../src/lib/supabase.ts';
 import { askBrain, AssistantError } from '../src/lib/brain.ts';
 import { executeCommand, buildAppContext, saveAssistantSettings, getAssistantSettings } from '../src/lib/voice.ts';
 import * as db from '../src/lib/db.ts';
+import { loadAssistantMemory, saveAssistantMemory } from '../src/lib/assistantMemory.ts';
 
 const storage = new Map<string, string>();
 const context = { page: 'home', pageParams: {}, navigate: () => {} };
@@ -93,6 +94,68 @@ test('typed provider failures are sanitized and never become offline writes', as
   const failure = await executeCommand('add task Unsafe fallback fixture', context);
   assert.equal(failure.errorCode, 'network'); assert.doesNotMatch(failure.message, /SECRET/);
   assert.equal(db.dbState().tasks.some(row => row.title === 'Unsafe fallback fixture'), false);
+});
+
+test('busy provider offers local reads without turning even explicit commands into writes', async t => {
+  const sb = getClient()!;
+  t.mock.method(sb.auth, 'getSession', async () => sessionResult(validSession()));
+  let result: any = httpError(429, { code: 'rate_limit', error: 'SECRET provider body' });
+  mockInvoke(t, async () => result);
+  saveAssistantSettings({ ...getAssistantSettings(), useAI: true });
+  const added = await executeCommand('add task local fallback fixture', context);
+  assert.equal(added.ok, false);
+  assert.equal(db.dbState().tasks.some(row => row.title === 'local fallback fixture'), false);
+  const victim = await db.createTask({ title: 'Fallback delete victim' });
+  const refused = await executeCommand('delete task Fallback delete victim', context);
+  assert.equal(refused.ok, false);
+  assert.equal(refused.errorCode, 'rate_limit');
+  assert.equal(db.dbState().tasks.find(row => row.id === victim.id)?.deleted, false);
+  assert.doesNotMatch(refused.message, /AI is busy or request limit reached/i);
+  result = httpError(503, { code: 'unavailable', error: 'SECRET provider body' });
+  const summary = await executeCommand('could you summarize my day please', context);
+  assert.equal(summary.ok, true);
+  assert.match(summary.message, /Using your local data/);
+  const natural = await executeCommand('I need to delete task Fallback delete victim', context);
+  assert.equal(natural.ok, false);
+  assert.equal(db.dbState().tasks.find(row => row.id === victim.id)?.deleted, false);
+  for (const code of ['rate_limit', 'rate_limit_daily', 'unavailable']) {
+    result = httpError(503, { code });
+    for (const phrase of ['add note Private about secret', 'add task test', 'mark task Fallback delete victim done', 'reopen task Fallback delete victim', 'add task milk but do not save it']) {
+      const failed = await executeCommand(phrase, context);
+      assert.equal(failed.ok, false, phrase);
+      assert.deepEqual(failed.results, [], phrase);
+    }
+    assert.equal((await executeCommand('review my week', context)).ok, true);
+  }
+});
+
+test('persisted bounded memory reaches the actual askBrain request', async t => {
+  t.mock.method(getClient()!.auth, 'getSession', async () => sessionResult(validSession()));
+  saveAssistantMemory([
+    { role: 'user', content: 'My favorite color is blue' },
+    { role: 'assistant', content: 'Blue it is!' },
+    { role: 'user', content: 'add note travel about PRIVATE-BODY' },
+    { role: 'assistant', content: 'PRIVATE-BODY saved' },
+  ], 'memory-fixture');
+  let wire: any;
+  mockInvoke(t, async (_name: string, options: any) => {
+    wire = options.body;
+    return { data: { reply: 'Blue!', calls: [] }, error: null };
+  });
+  await executeCommand('What color did I mention?', context, loadAssistantMemory('memory-fixture'));
+  assert.match(JSON.stringify(wire.history), /favorite color is blue/);
+  assert.doesNotMatch(JSON.stringify(wire.history), /PRIVATE-BODY/);
+  assert.ok(wire.history.length <= 8);
+  assert.ok(wire.history.reduce((n: number, h: any) => n + h.content.length, 0) <= 2400);
+});
+
+test('exact navigation skips provider and private context work', async t => {
+  const invoke = mockInvoke(t, async () => { throw new Error('must not invoke'); });
+  const pages: string[] = [];
+  const result = await executeCommand('could you open my calendar please?', { ...context, navigate: page => pages.push(page) });
+  assert.equal(result.ok, true);
+  assert.deepEqual(pages, ['calendar']);
+  assert.equal(invoke.mock.callCount(), 0);
 });
 
 test('whole plan validates before execution, including malformed or empty responses', async t => {

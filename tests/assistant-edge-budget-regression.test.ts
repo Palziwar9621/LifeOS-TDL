@@ -8,14 +8,17 @@ const success = (name = 'add_task', args = { title: 'Call Sam' } as any) => new 
 const env = (name: string) => ({ SUPABASE_URL: 'https://assistant.invalid', SUPABASE_ANON_KEY: 'fixture-anon', GROQ_API_KEY: 'fixture-provider-secret' })[name];
 function fixture(fetch: (url: string, init: RequestInit) => Promise<Response>, verifyUser = async () => true) { return createAssistantHandler({ env, verifyUser, fetch }); }
 
-test('every turn sends the full 71-tool contract; long or history-heavy turns escalate to the large model', () => {
+test('every turn sends the full 75-tool contract; context-dependent turns escalate to the large model', () => {
   assert.equal(TOOLS.length, 75);
   assert.ok(JSON.stringify(TOOLS).length > 25_000);
-  for (const spoken of ['add task Call Sam', 'snooze reminder Dentist ten minutes', 'finish task Dig in Garden', 'make that one blue']) {
+  for (const spoken of ['add task Call Sam', 'snooze reminder Dentist ten minutes', 'finish task Dig in Garden']) {
     assert.equal(selectAssistantModel(spoken), 'small', spoken);
   }
+  assert.equal(selectAssistantModel('make that one blue'), 'large');
   assert.equal(selectAssistantModel('please update the garden project milestone called dig to completed and then also move the sprinkler repair task to next tuesday morning at nine with a reminder'), 'large');
-  assert.equal(selectAssistantModel('move it to Monday', [{ role: 'user', content: 'update the planner block Study' }, { role: 'assistant', content: 'Which day?' }]), 'small');
+  assert.equal(selectAssistantModel('move it to Monday', [{ role: 'user', content: 'update the planner block Study' }, { role: 'assistant', content: 'Which day?' }]), 'large');
+  assert.equal(selectAssistantModel('actually change that to tomorrow'), 'large');
+  assert.equal(selectAssistantModel('finish laundry and then move the dentist task to Friday'), 'large');
   assert.equal(selectAssistantModel('ok do it', new Array(4).fill(0).map((_, i) => ({ role: 'user', content: `turn ${i}` }))), 'large');
 });
 
@@ -35,7 +38,7 @@ test('provider failures move to the next tier with the full contract', async () 
   }
 });
 
-test('429 with retry-after 0 pauses briefly then moves to the next provider', async () => {
+test('429 with retry-after 0 moves immediately to the next provider', async () => {
   const sent: any[] = [];
   const handler = fixture(async (_url, init) => {
     sent.push(JSON.parse(init.body as string));
@@ -47,6 +50,25 @@ test('429 with retry-after 0 pauses briefly then moves to the next provider', as
   assert.equal(response.status, 200); assert.equal((await response.json()).calls[0].name, 'add_task');
   assert.equal(sent.length, 2);
   assert.doesNotMatch(JSON.stringify(sent), /PRIVATE/);
+});
+
+test('retry-after creates a per-model cooldown without delaying the edge turn', async () => {
+  const seen: { model: string; at: number }[] = [];
+  let first = true;
+  const handler = fixture(async (_url, init) => {
+    const body = JSON.parse(init.body as string);
+    seen.push({ model: body.model, at: Date.now() });
+    if (first) { first = false; return new Response('rate limited', { status: 429, headers: { 'retry-after': '120' } }); }
+    return success();
+  });
+  const started = Date.now();
+  assert.equal((await (await handler(request())).json()).calls[0].name, 'add_task');
+  const elapsed = Date.now() - started;
+  assert.ok(elapsed < 500, `cooldown should not sleep the turn (${elapsed}ms)`);
+  // The second request skips the rate-limited small tier and uses the
+  // configured large fallback. It does not re-probe the known failing tier.
+  await handler(request());
+  assert.deepEqual(seen.map(entry => entry.model), ['openai/gpt-oss-20b', 'openai/gpt-oss-120b', 'openai/gpt-oss-120b']);
 });
 
 test('413 payload caps retry the same tier with a compact prompt; tools stay complete', async () => {
@@ -111,6 +133,17 @@ test('prose instead of a plan gets one more provider try before being accepted',
   })(request('label task Call Sam Work'));
   assert.equal(response.status, 200); assert.equal(count, 2);
   assert.equal((await response.json()).calls[0].name, 'set_task_tag');
+});
+
+test('valid conversational prose is accepted without an unnecessary provider retry', async () => {
+  let count = 0;
+  const response = await fixture(async () => {
+    count++;
+    return new Response(JSON.stringify({ choices: [{ message: { content: 'Heyy, I’m doing well and ready to help!' } }] }));
+  })(request('hey, how are you?'));
+  assert.equal(response.status, 200);
+  assert.equal(count, 1);
+  assert.match((await response.json()).reply, /ready to help/);
 });
 
 test('tertiary tier runs only when configured and sits between primary and fallback', async () => {

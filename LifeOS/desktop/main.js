@@ -136,20 +136,32 @@ function ringNow(alarm) {
     actions: [],
     silent: true, // selected melody below; no extra system notification beep
   });
+  const ringingAlarm = { key: alarm.key, notif, closedByUs: false };
+  notif.on('close', () => {
+    // Electron emits close for both a user dismissal and notif.close(). Only
+    // the current user-dismissed alarm may stop playback or reach the web app.
+    if (ringingAlarm.closedByUs || ringing !== ringingAlarm) return;
+    stopRinging();
+    if (win && !win.isDestroyed()) win.webContents.send('lifeos:alarm-dismissed', alarm.key);
+  });
   notif.on('click', () => {
     stopRinging();
     if (win) { win.show(); win.focus(); } else createWindow();
   });
   notif.show();
 
-  ringing = { notif };
+  ringing = ringingAlarm;
   if (alarmMode === 'alarm' && alarmSound !== 'none') playNativeSound(alarmSound);
   if (tray) tray.setToolTip('⏰ LifeOS — ALARM: ' + (alarm.title || ''));
 }
 
 function stopRinging() {
   if (soundWindow) { soundWindow.destroy(); soundWindow = null; }
-  if (ringing) { ringing.notif.close(); ringing = null; }
+  if (ringing) {
+    ringing.closedByUs = true;
+    ringing.notif.close();
+    ringing = null;
+  }
   if (tray) tray.setToolTip('LifeOS — alarms active while running');
 }
 

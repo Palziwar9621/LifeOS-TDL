@@ -12,7 +12,8 @@ import android.content.SharedPreferences;
 /**
  * Fired by AlarmManager at the alarm time. Shows a max-importance,
  * full-screen notification and starts the looping sound/vibration service.
- * The alarm rings UNTIL the user taps Snooze or Turn off —
+ * The alarm rings UNTIL the user taps Snooze, taps Turn off, or swipes the
+ * notification away —
  * no time cap. A dismissed alarm never re-fires: it only rings again when
  * its next interval is scheduled (Snooze schedules one explicitly).
  */
@@ -30,20 +31,24 @@ public class AlarmReceiver extends BroadcastReceiver {
     public void onReceive(Context ctx, Intent intent) {
         String action = intent.getAction();
         if (ACTION_DISMISS.equals(action)) {
-            AlarmSoundService.stop(ctx);
+            String key = intent.getStringExtra(EXTRA_KEY);
+            int notifId = notificationId(key, intent.getIntExtra(EXTRA_NOTIF_ID, 0));
+            AlarmSoundService.stop(ctx, key, notifId);
             NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
-            if (nm != null) nm.cancel(intent.getIntExtra(EXTRA_NOTIF_ID, 0));
+            if (nm != null && key != null) nm.cancel(key, notifId);
             // Turned off = dead for this occurrence, even when the web app
             // re-pushes the same alarm key on its next sync.
-            AlarmScheduler.markDismissed(ctx, intent.getStringExtra(EXTRA_KEY));
+            AlarmScheduler.markDismissed(ctx, key);
+            AlarmBridge.notifyWeb(key, false);
             return;
         }
         if (ACTION_SNOOZE.equals(action)) {
             String key = intent.getStringExtra(EXTRA_KEY);
             if (key == null || !AlarmScheduler.snooze(ctx, key, 10)) return;
-            AlarmSoundService.stop(ctx);
+            AlarmSoundService.stop(ctx, key, notificationId(key, intent.getIntExtra(EXTRA_NOTIF_ID, 0)));
             NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
-            if (nm != null) nm.cancel(intent.getIntExtra(EXTRA_NOTIF_ID, 0));
+            if (nm != null) nm.cancel(key, notificationId(key, intent.getIntExtra(EXTRA_NOTIF_ID, 0)));
+            AlarmBridge.notifyWeb(key, true);
             return;
         }
 
@@ -63,7 +68,7 @@ public class AlarmReceiver extends BroadcastReceiver {
             return;
         }
 
-        final int notifId = key.hashCode();
+        final int notifId = notificationId(key, 0);
 
         NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm == null) return;
@@ -94,11 +99,15 @@ public class AlarmReceiver extends BroadcastReceiver {
         b.setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
                 .setContentTitle(title)
                 .setContentText(body)
-                .setStyle(new Notification.BigTextStyle().bigText(body))
-                .setCategory(Notification.CATEGORY_ALARM)
-                .setVisibility(Notification.VISIBILITY_PUBLIC)
-                .setOngoing(true) // can't be swiped away — must be acted on
-                .setContentIntent(pOpen)
+                 .setStyle(new Notification.BigTextStyle().bigText(body))
+                 .setCategory(Notification.CATEGORY_ALARM)
+                 .setVisibility(Notification.VISIBILITY_PUBLIC)
+                 // A swipe is the same user intent as Turn off. Keep the
+                 // notification dismissible, but route its delete callback
+                 // through the key-scoped stop/dismiss path below.
+                 .setOngoing(false)
+                 .setDeleteIntent(pDismiss)
+                 .setContentIntent(pOpen)
                 .addAction(new Notification.Action.Builder(null, "Snooze 10m", pSnooze).build())
                 .addAction(new Notification.Action.Builder(null, "Turn off", pDismiss).build());
 
@@ -111,10 +120,15 @@ public class AlarmReceiver extends BroadcastReceiver {
         if (android.os.Build.VERSION.SDK_INT < 34) b.setFullScreenIntent(pOpen, true);
         else if (nm.canUseFullScreenIntent()) b.setFullScreenIntent(pOpen, true);
         Notification notification = b.build();
-        nm.notify(notifId, notification);
+        nm.notify(key, notifId, notification);
 
         // Looping sound + vibration until the user acts (no cap).
-        AlarmSoundService.start(ctx, notifId, prefs.getString("sound", "chime"), notification);
+        AlarmSoundService.start(ctx, key, notifId, prefs.getString("sound", "chime"), notification);
+    }
+
+    private static int notificationId(String key, int fallback) {
+        int id = key == null ? fallback : key.hashCode();
+        return id == 0 ? (fallback == 0 ? 1 : fallback) : id;
     }
 
     private static PendingIntent action(Context ctx, String action, String key, int requestCode, int notifId) {
